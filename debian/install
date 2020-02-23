@@ -1,0 +1,3 @@
+traceshark usr/bin
+traceshark.desktop usr/share/applications
+images/shark.png usr/share/icons/traceshark

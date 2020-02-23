@@ -1,0 +1,32 @@
+From b71f51b477ac6060710332e57fcf676394daffd2 Mon Sep 17 00:00:00 2001
+From: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
+Date: Sun, 23 Feb 2020 00:23:46 +0000
+Subject: [PATCH] Add desktop file
+
+commit b71f51b477ac6060710332e57fcf676394daffd2 upstream
+
+Signed-off-by: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
+---
+ traceshark.desktop | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+ create mode 100644 traceshark.desktop
+
+diff --git a/traceshark.desktop b/traceshark.desktop
+new file mode 100644
+index 0000000..1cfe744
+--- /dev/null
++++ b/traceshark.desktop
+@@ -0,0 +1,10 @@
++[Desktop Entry]
++Version=0.9.9-beta
++Type=Application
++Name=traceshark
++GenericName=traceshark
++Comment=
++Exec=/usr/bin/traceshark
++Icon=/usr/share/icons/traceshark/shark.png
++Categories=System;
++Terminal=false
+-- 
+2.20.1
+

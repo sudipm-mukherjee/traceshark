@@ -1,0 +1,26 @@
+Source: traceshark
+Section: devel
+Priority: optional
+Maintainer: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
+Build-Depends: debhelper-compat (= 12), qtbase5-dev, libqcustomplot-dev
+Standards-Version: 4.5.0
+Homepage: https://awesomeopensource.com/project/cunctator/traceshark
+Vcs-Browser: https://github.com/sudipm-mukherjee/traceshark.git
+Vcs-Git: https://github.com/sudipm-mukherjee/traceshark
+
+Package: traceshark
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: trace-cmd
+Description: Graphical viewer for the Ftrace and Perf events
+ The trace can be collected using trace-cmd or perf.
+ It can be used to visualize the following events:
+ cpu_frequency
+ cpu_idle
+ sched_migrate_task
+ sched_process_exit
+ sched_process_fork
+ sched_switch
+ sched_wakeup
+ sched_wakeup_new
+ sched_waking

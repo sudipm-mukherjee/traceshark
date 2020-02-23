@@ -1,0 +1,36 @@
+From b1f9e1b556c624e76bc0630f9f76c55284a62061 Mon Sep 17 00:00:00 2001
+From: Viktor Rosendahl <viktor.rosendahl@gmail.com>
+Date: Sun, 9 Feb 2020 21:57:06 +0100
+Subject: [PATCH] MainWindow: Fix statement in QCustomPlot attribution dialog
+
+commit b1f9e1b556c624e76bc0630f9f76c55284a62061 upstream
+
+When we use the distro's shared library QCustomPlot, the the statement
+"This program contains a modified version of QCustomPlot %1." is
+clearly wrong, so in that case we use
+"This program uses QCustomPlot %1."
+
+Signed-off-by: Viktor Rosendahl <viktor.rosendahl@gmail.com>
+---
+ ui/mainwindow.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ui/mainwindow.cpp b/ui/mainwindow.cpp
+index 5b131ce..2cdc942 100644
+--- a/ui/mainwindow.cpp
++++ b/ui/mainwindow.cpp
+@@ -1149,7 +1149,11 @@ void MainWindow::aboutQCustomPlot()
+ 
+ 	textAboutCaption = QMessageBox::tr(
+ 	       "<h1>About QCustomPlot</h1>"
++#ifdef CONFIG_SYSTEM_QCUSTOMPLOT
++	       "<p>This program uses QCustomPlot %1.</p>"
++#else
+ 	       "<p>This program contains a modified version of QCustomPlot %1.</p>"
++#endif
+ 		).arg(QLatin1String(QCUSTOMPLOT_VERSION_STR));
+ 	textAbout = QMessageBox::tr(
+ 	       "<p>Copyright &copy; 2011-2018 Emanuel Eichhammer"
+-- 
+2.20.1
+

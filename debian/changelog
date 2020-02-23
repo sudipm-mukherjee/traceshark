@@ -1,0 +1,5 @@
+traceshark (0.9.9~beta-1) unstable; urgency=medium
+
+  * Initial release (Closes: #949827)
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Wed, 08 Apr 2020 21:05:07 +0100

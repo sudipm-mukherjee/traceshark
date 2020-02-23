@@ -1,0 +1,5 @@
+0001-traceshark.pro-Add-option-to-use-the-system-qcustomp.patch
+0002-MainWindow-Fix-statement-in-QCustomPlot-attribution-.patch
+0003-taskgraph.cpp-Fix-include-path.patch
+0004-Add-desktop-file.patch
+0001-Use-libqcustomplot-from-system.patch
