@@ -2,7 +2,7 @@ Source: traceshark
 Section: devel
 Priority: optional
 Maintainer: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
-Build-Depends: debhelper-compat (= 12), qtbase5-dev, libqcustomplot-dev
+Build-Depends: debhelper-compat (= 13), qtbase5-dev, libqcustomplot-dev
 Standards-Version: 4.5.0
 Homepage: https://github.com/cunctator/traceshark
 Vcs-Browser: https://github.com/sudipm-mukherjee/traceshark.git
