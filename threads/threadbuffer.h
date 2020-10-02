@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2017  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2017, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -60,7 +60,10 @@
 #include "misc/tstring.h"
 #include "mm/mempool.h"
 #include "threads/loadbuffer.h"
+#include "vtl/compiler.h"
 #include "vtl/tlist.h"
+
+#define TBUF_NRPAGES (4096)
 
 /*
  * This class is a load buffer for two threads where one is a producer and the
@@ -71,9 +74,8 @@ template<class T>
 class ThreadBuffer
 {
 public:
-	ThreadBuffer(unsigned int nr);
+	ThreadBuffer();
 	~ThreadBuffer();
-	unsigned int nrBuffers;
 	vtl::TList<T> list;
 	MemPool *strPool;
 	void beginProduceBuffer();
@@ -82,10 +84,10 @@ public:
 	void endConsumeBuffer();
 	LoadBuffer *loadBuffer;
 private:
-	__always_inline void waitForProductionComplete();
-	__always_inline void completeProduction();
-	__always_inline void waitForConsumptionComplete();
-	__always_inline void completeConsumption();
+	vtl_always_inline void waitForProductionComplete();
+	vtl_always_inline void completeProduction();
+	vtl_always_inline void waitForConsumptionComplete();
+	vtl_always_inline void completeConsumption();
 	bool isEmpty;
 	QMutex mutex;
 	QWaitCondition consumptionComplete;
@@ -93,7 +95,7 @@ private:
 };
 
 template<class T>
-__always_inline void ThreadBuffer<T>::waitForProductionComplete() {
+vtl_always_inline void ThreadBuffer<T>::waitForProductionComplete() {
 	mutex.lock();
 	while(isEmpty) {
 		/*
@@ -105,14 +107,14 @@ __always_inline void ThreadBuffer<T>::waitForProductionComplete() {
 }
 
 template<class T>
-__always_inline void ThreadBuffer<T>::completeProduction() {
+vtl_always_inline void ThreadBuffer<T>::completeProduction() {
 	isEmpty = false;
 	productionComplete.wakeOne();
 	mutex.unlock();
 }
 
 template<class T>
-__always_inline void ThreadBuffer<T>::waitForConsumptionComplete() {
+vtl_always_inline void ThreadBuffer<T>::waitForConsumptionComplete() {
 	mutex.lock();
 	while(!isEmpty) {
 		/*
@@ -124,17 +126,17 @@ __always_inline void ThreadBuffer<T>::waitForConsumptionComplete() {
 }
 
 template<class T>
-__always_inline void ThreadBuffer<T>::completeConsumption() {
+vtl_always_inline void ThreadBuffer<T>::completeConsumption() {
 	isEmpty = true;
 	list.softclear();
 	consumptionComplete.wakeOne();
 	mutex.unlock();
 }
 
-template<class T>ThreadBuffer<T>::ThreadBuffer(unsigned int nr):
-nrBuffers(nr), loadBuffer(nullptr), isEmpty(true)
+template<class T>ThreadBuffer<T>::ThreadBuffer():
+loadBuffer(nullptr), isEmpty(true)
 {
-	strPool = new MemPool(4096, sizeof(TString));
+	strPool = new MemPool(TBUF_NRPAGES, sizeof(TString));
 }
 
 template<class T>

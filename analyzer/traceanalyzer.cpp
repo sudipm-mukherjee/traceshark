@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2014-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2014-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -66,6 +66,7 @@ extern "C" {
 #include <QList>
 #include <QString>
 
+#include "vtl/compiler.h"
 #include "vtl/error.h"
 #include "vtl/tlist.h"
 
@@ -83,13 +84,13 @@ extern "C" {
 #include "threads/workitem.h"
 #include "threads/workqueue.h"
 
-__always_inline static int clib_open(const char *pathname, int flags,
-				     mode_t mode)
+vtl_always_inline static int clib_open(const char *pathname, int flags,
+				       mode_t mode)
 {
 	return open(pathname, flags, mode);
 }
 
-__always_inline static int clib_close(int fd)
+vtl_always_inline static int clib_close(int fd)
 {
 	return close(fd);
 }
@@ -391,7 +392,6 @@ void TraceAnalyzer::colorizeTasks()
 	int red;
 	int green;
 	int blue;
-	struct drand48_data rdata;
 	int i, j;
 	QList<TColor> colorList;
 	const TColor black(0, 0, 0);
@@ -400,7 +400,7 @@ void TraceAnalyzer::colorizeTasks()
 	TColor tmp;
 	long int rnd = 0;
 
-	srand48_r(290876, &rdata);
+	srand48(290876);
 
 	for (cpu = 0; cpu <= getMaxCPU(); cpu++) {
 		DEFINE_CPUTASKMAP_ITERATOR(iter) = cpuTaskMaps[cpu].begin();
@@ -453,7 +453,7 @@ retry:
 	 * element
 	 */
 	for (i = 0; i < ncolor; i++) {
-		lrand48_r(&rdata, &rnd);
+		rnd = lrand48();
 		j = rnd % ncolor;
 		tmp = colorList[j];
 		colorList[j] = colorList[i];
@@ -804,6 +804,7 @@ void TraceAnalyzer::scaleMigration()
 {
 	QList<Migration>::iterator iter;
 	double unit = migrationScale / getNrCPUs();
+	const int width = setstor->getValue(Setting::MIGRATION_WIDTH).intv();
 	for (iter = migrations.begin(); iter != migrations.end(); iter++) {
 		Migration &m = *iter;
 		double s = migrationOffset + (m.oldcpu + 1) * unit;
@@ -814,7 +815,7 @@ void TraceAnalyzer::scaleMigration()
 		 * object in the customPlot object.
 		 */
 		new MigrationArrow(s, e, m.time.toDouble(), color,
-				   customPlot);
+				   customPlot, width);
 	}
 }
 
@@ -914,12 +915,12 @@ void TraceAnalyzer::doLimitedStats()
 
 void TraceAnalyzer::processFtrace()
 {
-	__processGeneric(TRACE_TYPE_FTRACE);
+	processGeneric(TRACE_TYPE_FTRACE);
 }
 
 void TraceAnalyzer::processPerf()
 {
-	__processGeneric(TRACE_TYPE_PERF);
+	processGeneric(TRACE_TYPE_PERF);
 }
 
 void TraceAnalyzer::processAllFilters()
@@ -941,8 +942,8 @@ void TraceAnalyzer::processAllFilters()
 			}
 		}
 		if (OR_filterState.isEnabled(FilterState::FILTER_PID) &&
-		    !__processPidFilter(event, OR_filterPidMap,
-					OR_pidFilterInclusive)) {
+		    !processPidFilter(event, OR_filterPidMap,
+				      OR_pidFilterInclusive)) {
 			filteredEvents.append(eptr);
 			continue;
 		}
@@ -965,8 +966,8 @@ void TraceAnalyzer::processAllFilters()
 			continue;
 		}
 		if (filterState.isEnabled(FilterState::FILTER_PID) &&
-		    __processPidFilter(event, filterPidMap,
-				       pidFilterInclusive)) {
+		    processPidFilter(event, filterPidMap,
+				     pidFilterInclusive)) {
 			continue;
 		}
 		if (filterState.isEnabled(FilterState::FILTER_EVENT) &&

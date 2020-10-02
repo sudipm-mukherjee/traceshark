@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2018, 2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2018-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -53,6 +53,7 @@
 #include <stdlib.h>
 
 #include "misc/errors.h"
+#include "misc/osapi.h"
 #include "misc/traceshark.h"
 #include "vtl/error.h"
 #include "setting.h"
@@ -79,8 +80,8 @@ Setting::Value::Value(int i) :
 Setting::Setting(): supported(true), flags(FLAG_NO_FLAG), nrDep(0),
 		    nrDependents(0)
 {
-	bzero(dependency, sizeof(dependency));
-	bzero(dependent, sizeof(dependent));
+	tshark_bzero(dependency, sizeof(dependency));
+	tshark_bzero(dependent, sizeof(dependent));
 }
 
 

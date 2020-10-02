@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2018, 2019
+ * Copyright (C) 2015, 2016, 2018-2020
  * Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
@@ -92,17 +92,17 @@ void Cursor::setPosition(double pos)
 	 */
 	time.setPrecision(6);
 	advertiseTime(time);
-	_setPosition(pos);
+	setPosition_(pos);
 }
 
 void Cursor::setPosition(const vtl::Time &t)
 {
 	time = t;
 	advertiseTime(time);
-	_setPosition(time.toDouble());
+	setPosition_(time.toDouble());
 }
 
-void Cursor::_setPosition(double pos)
+void Cursor::setPosition_(double pos)
 {
 	start->setCoords(pos, -10000000000000000);
 	end->setCoords(pos, +10000000000000000);

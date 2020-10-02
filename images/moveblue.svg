@@ -1,0 +1,21 @@
+<?xml version="1.0" standalone="no"?>
+<!-- Creator: fig2dev Version 3.2.6a -->
+<!-- CreationDate: 2020-08-21 21:53:42 -->
+<!-- Magnification: 1.05 -->
+<svg	xmlns="http://www.w3.org/2000/svg"
+	xmlns:xlink="http://www.w3.org/1999/xlink"
+	width="704pt" height="764pt"
+	viewBox="-188 -638 11176 12121">
+<g fill="none">
+<!-- Line -->
+<polyline points=" 450,45 450,10845"
+	stroke="#0000ff" stroke-width="885px" stroke-dasharray="1000 1000"/>
+<!-- Line -->
+<polyline points=" 10350,0 10350,10800"
+	stroke="#0000ff" stroke-width="885px"/>
+<!-- Line -->
+<polygon points=" 3060,5400 3060,6750 4860,6750 4860,8100 7560,5400 4860,2700 4860,4050 3060,4050
+" fill="#0000ff"
+	stroke="#000000" stroke-width="135px"/>
+</g>
+</svg>
