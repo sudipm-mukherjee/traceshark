@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -55,7 +55,7 @@
 
 #include "gitversion.h"
 
-#define TRACESHARK_VERSION_STRING "0.9.9-beta" TRACESHARK_GIT_VERSION
+#define TRACESHARK_VERSION_STRING "0.9.11-beta" TRACESHARK_GIT_VERSION
 
 #include <QtCore>
 #include <cstdint>
@@ -63,10 +63,18 @@
 #include "misc/tstring.h"
 #include "vtl/compiler.h"
 
-#define MAX_LINE_WIDTH_OPENGL (4)
+#define DEFAULT_MIGRATION_WIDTH (1)
+#define MAX_MIGRATION_WIDTH (8)
+#define MIN_MIGRATION_WIDTH (1)
+#define DEFAULT_FREQ_LINE_WIDTH (2)
+#define MIN_FREQ_LINE_WIDTH (1)
+#define MAX_FREQ_LINE_WIDTH (8)
+#define DEFAULT_IDLE_LINE_WIDTH (1)
+#define MIN_IDLE_LINE_WIDTH (1)
+#define MAX_IDLE_LINE_WIDTH (8)
 #define MIN_LINE_WIDTH_OPENGL (1)
 #define DEFAULT_LINE_WIDTH_OPENGL (2)
-#define MAX_LINE_WIDTH_OPENGL (4)
+#define MAX_LINE_WIDTH_OPENGL (8)
 #define DEFAULT_LINE_WIDTH (1)
 #define DEFAULT_MAX_VRT_LATENCY (20)
 #define MIN_MAX_VRT_LATENCY (1)
@@ -142,71 +150,12 @@ namespace TShark {
 
 	enum CursorIdx {RED_CURSOR, BLUE_CURSOR, NR_CURSORS};
 
-	/*
-	 * This functions accepts ':' at the end of the value
-	 * For example, 123.456: is ok. 123.456X is not ok if
-	 * X is not a digit between 0-9 or a ':'
-	 */
-	static __always_inline double timeStrToDouble(char* str, bool &ok)
-	{
-		char *c;
-		double r;
-		unsigned long long base = 0;
-		bool isNeg = false;
-		unsigned int d;
-		unsigned long long divint;
-		double div;
-
-		ok = true;
-
-		if (*str == '-') {
-			str++;
-			isNeg = true;
-		}
-
-		for (c = str; *c != '\0'; c++) {
-			if (*c < '0' || *c > '9')
-				break;
-			d = *c - '0';
-			base *= 10;
-			base += d;
-		}
-
-		r = (double) base;
-
-		if (*c == '.') {
-			divint = 1;
-			base = 0;
-			for (c++; *c != '\0'; c++) {
-				if (*c < '0' || *c > '9')
-					break;
-				d = *c - '0';
-				base *= 10;
-				base += d;
-				divint *= 10;
-			}
-			div = (double) divint;
-			r += base / div;
-		}
-
-		if (*c != ':')
-			goto error;
-
-		if (isNeg)
-			return -r;
-		else
-			return r;
-	error:
-	        ok = false;
-		return 0;
-	}
-
 	union value32 {
 		uint32_t word32;
 		uint8_t word8[4];
 	};
 
-	__always_inline uint32_t StrHash32(const TString *str)
+	vtl_always_inline uint32_t StrHash32(const TString *str)
 	{
 		union value32 uvalue;
 		uvalue.word32 = 0;
@@ -222,8 +171,8 @@ namespace TShark {
 		return uvalue.word32;
 	}
 
-	__always_inline bool cmp_timespec(const struct timespec &s1,
-					  const struct timespec &s2) {
+	vtl_always_inline bool cmp_timespec(const struct timespec &s1,
+					    const struct timespec &s2) {
 		return s1.tv_sec == s2.tv_sec && s1.tv_nsec == s2.tv_nsec;
 	}
 }

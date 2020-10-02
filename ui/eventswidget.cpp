@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -63,15 +63,13 @@ EventsWidget::EventsWidget(QWidget *parent):
 	QDockWidget(tr("Events"), parent), events(nullptr),
 	eventsPtrs(nullptr), saveScrollTime(false), selectedEvent(nullptr)
 {
-	tableView = new TableView(this);
+	tableView = new TableView(this, TableView::TABLE_SINGLEROWSELECT);
 	eventsModel = new EventsModel(tableView);
 	tableView->setModel(eventsModel);
 	setWidget(tableView);
 	tableView->horizontalHeader()->setStretchLastSection(true);
 	resizeColumnsToContents();
 	tableView->show();
-	tsconnect(tableView, clicked(const QModelIndex &),
-		  this, handleClick(const QModelIndex &));
 	tsconnect(tableView, doubleClicked(const QModelIndex &),
 		  this, handleDoubleClick(const QModelIndex &));
 	tsconnect(tableView, sigSelectionChanged(const QItemSelection &,
@@ -84,7 +82,7 @@ EventsWidget::EventsWidget(vtl::TList<TraceEvent> *e, QWidget *parent):
 	QDockWidget(parent), eventsPtrs(nullptr), saveScrollTime(false),
 	selectedEvent(nullptr)
 {
-	tableView = new TableView(this);
+	tableView = new TableView(this, TableView::TABLE_SINGLEROWSELECT);
 	eventsModel = new EventsModel(e, tableView);
 	events = e;
 	tableView->setModel(eventsModel);
@@ -92,8 +90,6 @@ EventsWidget::EventsWidget(vtl::TList<TraceEvent> *e, QWidget *parent):
 	tableView->horizontalHeader()->setStretchLastSection(true);
 	resizeColumnsToContents();
 	tableView->show();
-	tsconnect(tableView, clicked(const QModelIndex &),
-		  this, handleClick(const QModelIndex &));
 	tsconnect(tableView, doubleClicked(const QModelIndex &),
 		  this, handleDoubleClick(const QModelIndex &));
 	tsconnect(tableView, sigSelectionChanged(const QItemSelection &,
@@ -246,20 +242,11 @@ int EventsWidget::binarySearch(const vtl::Time &time, int start, int end)
 		return binarySearch(time, pivot, end);
 }
 
-void EventsWidget::handleClick(const QModelIndex &index)
-{
-	if (index.column() == 0) {
-		vtl::Time time = getEventAt(index.row())->time;
-		emit timeSelected(time);
-	}
-}
-
 void EventsWidget::handleDoubleClick(const QModelIndex &index)
 {
-	if (index.column() == 5) {
-		const TraceEvent &event = *getEventAt(index.row());
-		emit infoDoubleClicked(event);
-	}
+	const TraceEvent &event = *getEventAt(index.row());
+	EventsModel::column_t col = (EventsModel::column_t) index.column();
+	emit eventDoubleClicked(col, event);
 }
 
 void EventsWidget::handleSelectionChanged(const QItemSelection &/*selected*/,

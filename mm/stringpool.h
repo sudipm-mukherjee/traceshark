@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -56,15 +56,17 @@
 #include <cstdint>
 #include <cstring>
 #include "mm/mempool.h"
+#include "misc/osapi.h"
 #include "misc/traceshark.h"
 #include "misc/tstring.h"
 #include "vtl/avltree.h"
+#include "vtl/compiler.h"
 #include "vtl/tlist.h"
 
 #define STRINGPOOL_MAX(A, B) ((A) >= (B) ? A:B)
 #define STRINGPOOL_MIN(A, B) ((A) < (B) ? A:B)
 
-class __DummySP {};
+class DummySP_ {};
 
 class PoolBundleSP {
 public:
@@ -75,14 +77,14 @@ public:
 template<typename HashFunc>
 class StringPool;
 
-#define __STRINGPOOL_ITERATOR(name) \
-vtl::AVLTree<TString, __DummySP, vtl::AVLBALANCE_USEPOINTERS, \
-AVLAllocatorSP<TString, __DummySP>, AVLCompareSP<TString>>::iterator
+#define STRINGPOOL_ITERATOR_(name) \
+vtl::AVLTree<TString, DummySP_, vtl::AVLBALANCE_USEPOINTERS, \
+AVLAllocatorSP<TString, DummySP_>, AVLCompareSP<TString>>::iterator
 
 template <class T>
 class AVLCompareSP {
 public:
-	__always_inline static int compare(const T &a, const T &b) {
+	vtl_always_inline static int compare(const T &a, const T &b) {
 		return strcmp(a.ptr, b.ptr);
 	}
 };
@@ -94,7 +96,7 @@ public:
 		PoolBundleSP *pb = (PoolBundleSP*) data;
 		pools = *pb;
 	}
-	__always_inline vtl::AVLNode<T, U> *alloc(const T &key) {
+	vtl_always_inline vtl::AVLNode<T, U> *alloc(const T &key) {
 		vtl::AVLNode<T, U> *node = (vtl::AVLNode<T, U> *)
 			pools.nodePool->allocObj();
 		node->key.len = key.len;
@@ -102,7 +104,7 @@ public:
 		strcpy(node->key.ptr, key.ptr);
 		return node;
 	}
-	__always_inline int clear() {
+	vtl_always_inline int clear() {
 		/*
 		 * Do nothing because the pools are owned by StringPool. This
 		 * is only called from StringPool, via AVLTree, when the object
@@ -114,8 +116,8 @@ private:
 	PoolBundleSP pools;
 };
 
-#define AVLTREE_SIZE ((int)sizeof(vtl::AVLTree<TString, __DummySP,	 \
-vtl::AVLBALANCE_USEPOINTERS, AVLAllocatorSP<TString, __DummySP>, \
+#define AVLTREE_SIZE ((int)sizeof(vtl::AVLTree<TString, DummySP_,	 \
+vtl::AVLBALANCE_USEPOINTERS, AVLAllocatorSP<TString, DummySP_>, \
 			     AVLCompareSP<TString>>))
 #define TSTRING_PTR_SIZE ((int)sizeof(TString*))
 #define TYPICAL_CACHE_LINE_SIZE (64)
@@ -128,19 +130,19 @@ class StringPoolEntry {
 	friend class StringPool<HashFunc>;
 public:
 StringPoolEntry(void *data): cachePtr(nullptr), avlTree(data) {
-		bzero(cache, SP_CACHE_SIZE);
+		tshark_bzero(cache, SP_CACHE_SIZE);
 	}
 protected:
 	char cache[SP_CACHE_SIZE];
 	TString *cachePtr;
-	vtl::AVLTree<TString, __DummySP, vtl::AVLBALANCE_USEPOINTERS,
-		AVLAllocatorSP<TString, __DummySP>, AVLCompareSP<TString>>
+	vtl::AVLTree<TString, DummySP_, vtl::AVLBALANCE_USEPOINTERS,
+		     AVLAllocatorSP<TString, DummySP_>, AVLCompareSP<TString>>
 		avlTree;
 };
 
 class StringPoolDefaultHashFunc {
 public:
-	__always_inline uint32_t operator()(const TString *str) const
+	vtl_always_inline uint32_t operator()(const TString *str) const
 	{
 		return TShark::StrHash32(str);
 	}
@@ -152,12 +154,12 @@ class StringPool
 public:
 	StringPool(unsigned int nr_pages = 256 * 10, unsigned int hSizeP = 256);
 	~StringPool();
-	__always_inline const TString *allocString(const TString *str,
+	vtl_always_inline const TString *allocString(const TString *str,
 						   uint32_t cutoff);
 	void clear();
 	void reset();
 private:
-	__always_inline const TString *allocUniqueString(const TString *str);
+	vtl_always_inline const TString *allocUniqueString(const TString *str);
 	MemPool *coldCharPool;
 	MemPool *strPool;
 	PoolBundleSP avlPools;
@@ -171,7 +173,7 @@ private:
 };
 
 template<typename HashFunc>
-__always_inline
+vtl_always_inline
 const TString *StringPool<HashFunc>::allocString(const TString *str,
 						 uint32_t cutoff)
 {
@@ -195,7 +197,7 @@ const TString *StringPool<HashFunc>::allocString(const TString *str,
 				countReuse[hval]++;
 			return entry->cachePtr;
 		}
-		__STRINGPOOL_ITERATOR(iter) iter =
+		STRINGPOOL_ITERATOR_(iter) iter =
 			entry->avlTree.findInsert(*str, isNew);
 		TString &refStr = iter.key();
 		if (isNew) {
@@ -214,7 +216,7 @@ const TString *StringPool<HashFunc>::allocString(const TString *str,
 		entry = new StringPoolEntry<HashFunc>(&avlPools);
 		hashTable[hval] = entry;
 		deleteList.append(entry);
-		__STRINGPOOL_ITERATOR(iter) iter =
+		STRINGPOOL_ITERATOR_(iter) iter =
 			entry->avlTree.findInsert(*str, isNew);
 		if (cutoff != 0)
 			countAllocs[hval]++;
@@ -224,7 +226,7 @@ const TString *StringPool<HashFunc>::allocString(const TString *str,
 }
 
 template<typename HashFunc>
-__always_inline
+vtl_always_inline
 const TString *StringPool<HashFunc>::allocUniqueString(const TString *str)
 {
 	TString *newstr;
@@ -251,7 +253,7 @@ StringPool<HashFunc>::StringPool(unsigned int nr_pages, unsigned int hSizeP)
 		hSize = hSizeP;
 
 	entryPages = 2 * hSize *
-		sizeof(vtl::AVLNode<TString, __DummySP>) / 4096;
+		sizeof(vtl::AVLNode<TString, DummySP_>) / 4096;
 	entryPages = STRINGPOOL_MAX(1, entryPages);
 	strPages = 2* hSize * sizeof(TString) / 4096;
 	strPages = STRINGPOOL_MAX(16, strPages);
@@ -261,7 +263,7 @@ StringPool<HashFunc>::StringPool(unsigned int nr_pages, unsigned int hSizeP)
 
 	avlPools.charPool = new MemPool(nr_pages, sizeof(char));
 	avlPools.nodePool = new MemPool(entryPages, sizeof(vtl::AVLNode<TString,
-							   __DummySP>));
+							   DummySP_>));
 	hashTable = new StringPoolEntry<HashFunc>*[hSize];
 	countAllocs = new unsigned int[hSize];
 	countReuse = new unsigned int[hSize];
@@ -288,9 +290,9 @@ StringPool<HashFunc>::~StringPool()
 template<typename HashFunc>
 void StringPool<HashFunc>::clearTable()
 {
-	bzero(hashTable, hSize * sizeof(StringPoolEntry<HashFunc>*));
-	bzero(countAllocs, hSize * sizeof(unsigned int));
-	bzero(countReuse, hSize * sizeof(unsigned int));
+	tshark_bzero(hashTable, hSize * sizeof(StringPoolEntry<HashFunc>*));
+	tshark_bzero(countAllocs, hSize * sizeof(unsigned int));
+	tshark_bzero(countReuse, hSize * sizeof(unsigned int));
 }
 
 template<typename HashFunc>

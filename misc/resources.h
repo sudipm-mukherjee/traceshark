@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2016-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2016-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -53,42 +53,22 @@
 #ifndef RESOURCES_H
 #define RESOURCES_H
 
-/* All pixmap resources for icons should be defined here  */
-#define RESSRC_PNG_ADD_TASK      ":/traceshark/images/addtask30x30.png"
-#define RESSRC_PNG_ADD_TO_LEGEND ":/traceshark/images/addtolegend30x30.png"
-#define RESSRC_PNG_CLEAR_LEGEND  ":/traceshark/images/clearlegend30x30.png"
-#define RESSRC_PNG_CLEAR_TASK    ":/traceshark/images/cleartasksgraphs30x30.png"
-#define RESSRC_PNG_CLOSE         ":/traceshark/images/close30x30.png"
-#define RESSRC_PNG_CPUFILTER     ":/traceshark/images/cpufilter30x30.png"
-#define RESSRC_PNG_CURSOR_ZOOM   ":/traceshark/images/cursorzoom30x30.png"
-#define RESSRC_PNG_DEFAULT_ZOOM  ":/traceshark/images/defaultzoom30x30.png"
-#define RESSRC_PNG_EVENTFILTER   ":/traceshark/images/eventfilter30x30.png"
-#define RESSRC_PNG_EXPORTCPUEVENTS  \
-	                         ":/traceshark/images/exportcpuevents30x30.png"
-#define RESSRC_PNG_EXPORTEVENTS  ":/traceshark/images/exportevents30x30.png"
-#define RESSRC_PNG_FILTERCURRENT ":/traceshark/images/filtercurrent30x30.png"
-#define RESSRC_PNG_FILTERCURRENT_LIMIT \
-	                         ":/traceshark/images/filtercurrentlimited30x30.png"
-#define RESSRC_PNG_GETSTATS      ":/traceshark/images/getstats30x30.png"
-#define RESSRC_PNG_GETSTATS_TIMELIMIT \
-	                         ":/traceshark/images/getstatstimelimit30x30.png"
-#define RESSRC_PNG_GRAPHENABLE   ":/traceshark/images/graphenabledialog30x30.png"
-#define RESSRC_PNG_MOVE_BLUE     ":/traceshark/images/moveblue30x30.png"
-#define RESSRC_PNG_MOVE_RED      ":/traceshark/images/movered30x30.png"
-#define RESSRC_PNG_OPEN          ":/traceshark/images/open30x30.png"
-#define RESSRC_PNG_REMOVE_TASK   ":/traceshark/images/removetask30x30.png"
-#define RESSRC_PNG_RESETFILTERS  ":/traceshark/images/resetfilters30x30.png"
-#define RESSRC_PNG_SCREENSHOT    ":/traceshark/images/screenshot30x30.png"
-#define RESSRC_PNG_SHARK         ":/traceshark/images/shark.png"
-#define RESSRC_PNG_TASKSELECT    ":/traceshark/images/taskselector30x30.png"
-#define RESSRC_PNG_TIMEFILTER    ":/traceshark/images/timefilter30x30.png"
-#define RESSRC_PNG_FIND_SLEEP    ":/traceshark/images/findsleep30x30.png"
-#define RESSRC_PNG_FIND_WAKEUP   ":/traceshark/images/wakeup30x30.png"
-#define RESSRC_PNG_FIND_WAKING   ":/traceshark/images/waking30x30.png"
-#define RESSRC_PNG_FIND_WAKING_DIRECT \
-				 ":/traceshark/images/wakingdirect30x30.png"
-#define RESSRC_PNG_QCP_LOGO      ":/traceshark/images/qcp-logo.png"
-#define RESSRC_PNG_QT_LOGO       ":/traceshark/images/qtlogo-64.png"
+#include <QtCore>
+
+#if QT_VERSION < QT_VERSION_CHECK(5,6,0)
+
+/* Old Qt, we need to use pixmaps for icons*/
+#include "pngresources.h"
+
+#else /*  QT_VERSION >= QT_VERSION_CHECK(5,6,0) */
+
+/*
+ * We are on QT > 5.6.0, so we can use svg for icons. This is probably good for
+ * HiDPI use cases.
+ */
+#include "svgresources.h"
+
+#endif
 
 #define RESSRC_TEXT_LICENSE      ":/traceshark/LICENSE"
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -55,6 +55,8 @@
 #include <QApplication>
 #include <QDateTime>
 #include <QList>
+#include <QScrollBar>
+#include <QVBoxLayout>
 #include <QToolBar>
 
 #include "ui/cursor.h"
@@ -83,7 +85,7 @@
 #include "misc/traceshark.h"
 #include "threads/workqueue.h"
 #include "threads/workitem.h"
-#include "qcustomplot/qcustomplot.h"
+#include "ui/qcustomplot.h"
 #include "vtl/compiler.h"
 #include "vtl/error.h"
 
@@ -102,6 +104,12 @@
 
 #define DEFAULT_ZOOM_TOOLTIP	        \
 "Zoom to the default zoom level"
+
+#define FULL_ZOOM_TOOLTIP               \
+"Zoom so that the whole trace is visible"
+
+#define VERTICAL_ZOOM_TOOLTIP		\
+"Toggle vertical zoom and scroll"
 
 #define TOOLTIP_EXIT			\
 "Exit traceshark"
@@ -181,6 +189,27 @@
 #define SHOW_LICENSE_TOOLTIP		\
 "Show the license of Traceshark"
 
+#define EVENT_BACKTRACE_TOOLTIP         \
+"Show the backtrace of the selected event"
+
+#define EVENT_CPU_TOOLTIP		\
+"Filter the events view on the CPU of the selected event"
+
+#define EVENT_PID_TOOLTIP		\
+"Filter the events view on the PID of the selected event"
+
+#define EVENT_TYPE_TOOLTIP		\
+"Filter the events view on the type of the selected event"
+
+#define EVENT_MOVEBLUE_TOOLTIP	        \
+"Move the blue cursor to the time of the selected event"
+
+#define EVENT_MOVERED_TOOLTIP		\
+"Move the red cursor to the time of the selected event"
+
+#define QCPRANGE_DIFF(A, B) \
+	(TSABS(A.lower - B.lower) + TSABS(A.upper - B.upper))
+
 const double MainWindow::bugWorkAroundOffset = 100;
 const double MainWindow::schedSectionOffset = 100;
 const double MainWindow::schedSpacing = 250;
@@ -188,6 +217,8 @@ const double MainWindow::schedHeight = 950;
 const double MainWindow::cpuSectionOffset = 100;
 const double MainWindow::cpuSpacing = 100;
 const double MainWindow::cpuHeight = 800;
+const double MainWindow::pixelZoomFactor = 33;
+const double MainWindow::refDpiY = 96;
 /*
  * const double migrateHeight doesn't exist. The value used is the
  * dynamically calculated inc variable in MainWindow::computeLayout()
@@ -202,6 +233,7 @@ const QString MainWindow::UNINT_NAME = tr("uninterruptible");
 const double MainWindow::RUNNING_SIZE = 8;
 const double MainWindow::PREEMPTED_SIZE = 8;
 const double MainWindow::UNINT_SIZE = 12;
+const double MainWindow::CPUIDLE_SIZE = 5;
 
 const QCPScatterStyle::ScatterShape MainWindow::RUNNING_SHAPE =
 	QCPScatterStyle::ssTriangle;
@@ -209,13 +241,16 @@ const QCPScatterStyle::ScatterShape MainWindow::PREEMPTED_SHAPE =
 	QCPScatterStyle::ssTriangle;
 const QCPScatterStyle::ScatterShape MainWindow::UNINT_SHAPE =
 	QCPScatterStyle::ssPlus;
+const QCPScatterStyle::ScatterShape MainWindow::CPUIDLE_SHAPE =
+	QCPScatterStyle::ssCircle;
 
 const QColor MainWindow::RUNNING_COLOR = Qt::blue;
 const QColor MainWindow::PREEMPTED_COLOR = Qt::red;
 const QColor MainWindow::UNINT_COLOR = QColor(205, 0, 205);
 
 MainWindow::MainWindow():
-	tracePlot(nullptr), graphEnableDialog(nullptr), filterActive(false)
+	tracePlot(nullptr), scrollBarUpdate(false), graphEnableDialog(nullptr),
+	filterActive(false)
 {
 	settingStore = new SettingStore();
 	loadSettings();
@@ -233,12 +268,20 @@ MainWindow::MainWindow():
 	createStatusBar();
 
 	plotWidget = new QWidget(this);
-	plotLayout = new QVBoxLayout(plotWidget);
+	plotLayout = new QHBoxLayout(plotWidget);
 	setCentralWidget(plotWidget);
 
 	/* createTracePlot needs to have plotWidget created */
+	createScrollBar();
 	createTracePlot();
 	plotConnections();
+	tsconnect(scrollBar, valueChanged(int), this, scrollBarChanged(int));
+	tsconnect(tracePlot->yAxis, rangeChanged(QCPRange), this,
+		  yAxisChanged(QCPRange));
+	tsconnect(tracePlot->yAxis,
+		  selectionChanged (const QCPAxis::SelectableParts &),
+		  this,
+		  yAxisSelectionChange(const QCPAxis::SelectableParts &));
 
 	eventsWidget = new EventsWidget(this);
 	eventsWidget->setAllowedAreas(Qt::TopDockWidgetArea |
@@ -267,6 +310,8 @@ void MainWindow::createTracePlot()
 	setupOpenGL();
 
 	tracePlot->yAxis->setTicker(ticker);
+	tracePlot->yAxis->setSelectableParts(QCPAxis::spAxis);
+	tracePlot->xAxis->setSelectableParts(QCPAxis::spNone);
 	taskRangeAllocator = new TaskRangeAllocator(schedHeight
 						    + schedSpacing);
 	taskRangeAllocator->setStart(bugWorkAroundOffset);
@@ -289,11 +334,62 @@ void MainWindow::createTracePlot()
 	analyzer->setQCustomPlot(tracePlot);
 }
 
+void MainWindow::createScrollBar()
+{
+	scrollBar = new QScrollBar();
+	scrollBar->setInvertedAppearance(true);
+	scrollBar->setInvertedControls(false);
+	scrollBar->setSingleStep(1);
+	scrollBar->hide();
+	plotLayout->addWidget(scrollBar);
+}
+
+void MainWindow::configureScrollBar()
+{
+	int pixels = plotWidget->height();
+	double px_per_zrange;
+	double diff_px;
+	const QCPRange &zrange = tracePlot->yAxis->range();
+	double high = TSMAX(top, zrange.upper);
+	double low = TSMIN(bottom + zrange.size(), zrange.upper);
+	double diff = TSABS(high - low);
+	int smin, smax;
+	int value;
+	int pstep;
+	bool visible = tracePlot->yAxis->range().upper < (top - 0.001) ||
+		       tracePlot->yAxis->range().lower > (bottom + 0.001);
+
+	if (visible) {
+		px_per_zrange = pixels / zrange.size();
+		diff_px = diff * px_per_zrange;
+		smin = 0;
+		smax = (int)(diff_px / 2.0) + 1;
+		value = TSABS(zrange.upper - low) * smax / diff;
+	} else {
+		smin = 1;
+		smax = 1;
+		value = 1;
+	}
+
+	pstep = zrange.size() / diff * smax;
+
+	scrollBarUpdate = true;
+	if (scrollBar->minimum() != smin || scrollBar->maximum() != smax)
+		scrollBar->setRange(smin, smax);
+	if (scrollBar->value() != value)
+		scrollBar->setValue(value);
+	if (scrollBar->pageStep() != pstep)
+		scrollBar->setPageStep(pstep);
+	scrollBar->setVisible(visible);
+	scrollBarUpdate = false;
+}
+
 MainWindow::~MainWindow()
 {
 	int i;
 
-	closeTrace();
+	if (analyzer->isOpen())
+		closeTrace();
 	delete analyzer;
 	delete tracePlot;
 	delete taskRangeAllocator;
@@ -371,6 +467,9 @@ void MainWindow::openFile(const QString &name)
 
 		eventsWidget->beginResetModel();
 		eventsWidget->setEvents(analyzer->events);
+		if (analyzer->events->size() > 0)
+			setEventActionsEnabled(true);
+		setEventActionsEnabled(true);
 		eventsWidget->endResetModel();
 
 		taskSelectDialog->beginResetModel();
@@ -419,7 +518,7 @@ void MainWindow::openFile(const QString &name)
 		       "setupCursors() took %.6lf s\n"
 		       "rescaleTrace() took %.6lf s\n"
 		       "showTrace() took %.6lf s\n"
-		       "tracePlot->show() took %.6lf s\n",
+		       "tracePlot->show took %.6lf s\n",
 		       (double) (process - start) / 1000,
 		       (double) (layout - process) / 1000,
 		       (double) (eventsw - layout) / 1000,
@@ -440,9 +539,27 @@ void MainWindow::openFile(const QString &name)
 	}
 }
 
+void MainWindow::resizeEvent(QResizeEvent */*event*/)
+{
+	if (!tracePlot->isVisible())
+		return;
+
+	QCPRange range = tracePlot->yAxis->range();
+	double b;
+	double maxsize = maxZoomVSize();
+
+	if (range.size() > maxsize) {
+		b = range.lower;
+		tracePlot->yAxis->setRange(QCPRange(b, b + maxsize));
+		tracePlot->replot();
+	}
+}
+
 void MainWindow::processTrace()
 {
 	analyzer->processTrace();
+	startTime = analyzer->getStartTime().toDouble();
+	endTime = analyzer->getEndTime().toDouble();
 }
 
 void MainWindow::computeLayout()
@@ -452,11 +569,7 @@ void MainWindow::computeLayout()
 	unsigned int offset;
 	QString label;
 	double inc, o, p;
-	double start, end;
 	QColor color;
-
-	start = analyzer->getStartTime().toDouble();
-	end = analyzer->getEndTime().toDouble();
 
 	bottom = bugWorkAroundOffset;
 	offset = bottom;
@@ -475,7 +588,7 @@ void MainWindow::computeLayout()
 		color = QColor(135, 206, 250); /* Light sky blue */
 		label = QString("fork/exit");
 		ticks.append(offset);
-		new MigrationLine(start, end, offset, color, tracePlot);
+		new MigrationLine(startTime, endTime, offset, color, tracePlot);
 		tickLabels.append(label);
 		o = offset;
 		p = inc / nrCPUs ;
@@ -484,7 +597,8 @@ void MainWindow::computeLayout()
 			label = QString("cpu") + QString::number(cpu);
 			ticks.append(o);
 			tickLabels.append(label);
-			new MigrationLine(start, end, o, color, tracePlot);
+			new MigrationLine(startTime, endTime, o, color,
+					  tracePlot);
 		}
 
 		offset += inc;
@@ -528,7 +642,7 @@ void MainWindow::rescaleTrace()
 {
 	int maxwakeup;
 	const Setting::Value &maxvalue =
-		settingStore->getValue(Setting::MAX_VRT_WAKEUP_LATENCY);;
+		settingStore->getValue(Setting::MAX_VRT_WAKEUP_LATENCY);
 
 	maxwakeup = maxvalue.intv();
 	CPUTask::setVerticalWakeupMAX(maxwakeup);
@@ -547,6 +661,7 @@ void MainWindow::clearPlot()
 	tracePlot->clearItems();
 	tracePlot->clearPlottables();
 	tracePlot->hide();
+	scrollBar->hide();
 	TaskGraph::clearMap();
 	taskRangeAllocator->clearAll();
 	infoWidget->setTime(0, TShark::RED_CURSOR);
@@ -556,21 +671,17 @@ void MainWindow::clearPlot()
 void MainWindow::showTrace()
 {
 	unsigned int cpu;
-	double start, end;
 	int precision = 7;
 	double extra = 0;
 	QColor color;
 
-	start = analyzer->getStartTime().toDouble();
-	end = analyzer->getEndTime().toDouble();
-
-	if (end >= 10)
-		extra = floor (log(end) / log(10));
+	if (endTime >= 10)
+		extra = floor (log(endTime) / log(10));
 
 	precision += (int) extra;
 
-	tracePlot->yAxis->setRange(QCPRange(bottom, top));
-	tracePlot->xAxis->setRange(QCPRange(start, end));
+	tracePlot->yAxis->setRange(QCPRange(bottom, bottom + autoZoomVSize()));
+	tracePlot->xAxis->setRange(QCPRange(startTime, endTime));
 	tracePlot->xAxis->setNumberPrecision(precision);
 	tracePlot->yAxis->setTicks(false);
 	yaxisTicker->setTickVector(ticks);
@@ -593,12 +704,17 @@ void MainWindow::showTrace()
 
 		if (settingStore->getValue(Setting::SHOW_CPUIDLE_GRAPHS)
 		    .boolv()) {
+			const int lwidth = settingStore->getValue(
+				Setting::IDLE_LINE_WIDTH).intv();
+			const double adjsize = adjustScatterSize(CPUIDLE_SIZE,
+								 lwidth);
 			graph = tracePlot->addGraph(tracePlot->xAxis,
 						    tracePlot->yAxis);
 			graph->setSelectable(QCP::stNone);
 			name = QString(tr("cpuidle")) + QString::number(cpu);
-			style = QCPScatterStyle(QCPScatterStyle::ssCircle, 5);
+			style = QCPScatterStyle(CPUIDLE_SHAPE, adjsize);
 			pen.setColor(Qt::red);
+			pen.setWidth(lwidth);
 			style.setPen(pen);
 			graph->setScatterStyle(style);
 			pen.setColor(Qt::green);
@@ -617,7 +733,9 @@ void MainWindow::showTrace()
 			graph->setSelectable(QCP::stNone);
 			name = QString(tr("cpufreq")) + QString::number(cpu);
 			penF.setColor(Qt::blue);
-			penF.setWidth(2);
+			penF.setWidth(settingStore
+				      ->getValue(Setting::FREQ_LINE_WIDTH)
+				      .intv());
 			graph->setPen(penF);
 			graph->setName(name);
 			graph->setAdaptiveSampling(true);
@@ -653,6 +771,40 @@ skipIdleFreqGraphs:
 	tracePlot->replot();
 }
 
+/*
+ * The purpose of this function is to calculate how much the QCPScatterStyle
+ * size should be increased, if we have a large line width.
+ */
+double MainWindow::adjustScatterSize(double default_size, int linewidth)
+{
+	if (linewidth == 1 || linewidth == 2)
+		return default_size;
+
+	return default_size * linewidth / 2;
+}
+
+double MainWindow::maxZoomVSize()
+{
+	double max = (double)(plotWidget->height() * pixelZoomFactor);
+
+	max = refDpiY * max / logicalDpiY();
+	return max;
+}
+
+double MainWindow::autoZoomVSize()
+{
+	double max = maxZoomVSize();
+	double size = top - bottom;
+
+	if (size < 0)
+		size = -size;
+
+	if (size > max)
+		return max;
+
+	return size;
+}
+
 void MainWindow::loadSettings()
 {
 	int ts_errno;
@@ -665,13 +817,10 @@ void MainWindow::loadSettings()
 
 void MainWindow::setupCursors()
 {
-	double start, end, red, blue;
+	double red, blue;
 
-	start = analyzer->getStartTime().toDouble();
-	end = analyzer->getEndTime().toDouble();
-
-	red = (start + end) / 2;
-	blue = (start + end) / 2 + (end - start) / 10;
+	red = (startTime + endTime) / 2;
+	blue = (startTime + endTime) / 2 + (endTime - startTime) / 10;
 
 	setupCursors(red, blue);
 }
@@ -683,7 +832,7 @@ void MainWindow::setupCursors(const double &red, const double &blue)
 	vtl::Time bluetime = vtl::Time::fromDouble(blue);
 	bluetime.setPrecision(analyzer->getTimePrecision());
 
-	_setupCursors(redtime, red, bluetime, blue);
+	setupCursors_(redtime, red, bluetime, blue);
 }
 
 void MainWindow::setupCursors(const vtl::Time &redtime,
@@ -692,10 +841,10 @@ void MainWindow::setupCursors(const vtl::Time &redtime,
 	double red = redtime.toDouble();
 	double blue = bluetime.toDouble();
 
-	_setupCursors(redtime, red, bluetime, blue);
+	setupCursors_(redtime, red, bluetime, blue);
 }
 
-void MainWindow::_setupCursors(vtl::Time redtime, const double &red,
+void MainWindow::setupCursors_(vtl::Time redtime, const double &red,
 			       vtl::Time bluetime, const double &blue)
 {
 	cursors[TShark::RED_CURSOR] = new Cursor(tracePlot,
@@ -805,16 +954,19 @@ void MainWindow::addGenericAccessoryGraph(const QString &name,
 					  double size,
 					  const QColor &color)
 {
-	/* Add still running graph on top of the other two...*/
 	if (timev.size() == 0)
 		return;
+	const int lwidth = settingStore->getValue(Setting::LINE_WIDTH).intv();
+	const double adjsize = adjustScatterSize(size, lwidth);
+	/* Add still running graph on top of the other two...*/
 	QCPGraph *graph = tracePlot->addGraph(tracePlot->xAxis,
 					      tracePlot->yAxis);
 	graph->setName(name);
-	QCPScatterStyle style = QCPScatterStyle(sshape, size);
+	QCPScatterStyle style = QCPScatterStyle(sshape, adjsize);
 	QPen pen = QPen();
 
 	pen.setColor(color);
+	pen.setWidth(lwidth);
 	style.setPen(pen);
 	graph->setScatterStyle(style);
 	graph->setLineStyle(QCPGraph::lsNone);
@@ -860,6 +1012,8 @@ void MainWindow::setTraceActionsEnabled(bool e)
 	exportCPUAction->setEnabled(e);
 	cursorZoomAction->setEnabled(e);
 	defaultZoomAction->setEnabled(e);
+	fullZoomAction->setEnabled(e);
+	verticalZoomAction->setEnabled(e);
 	showTasksAction->setEnabled(e);
 	filterCPUsAction->setEnabled(e);
 	showEventsAction->setEnabled(e);
@@ -918,9 +1072,22 @@ void MainWindow::setTaskGraphClearActionEnabled(bool e)
 	clearTaskGraphsAction->setEnabled(e);
 }
 
+void MainWindow::setEventActionsEnabled(bool e)
+{
+	backTraceAction->setEnabled(e);
+	moveBlueAction->setEnabled(e);
+	moveRedAction->setEnabled(e);
+	eventCPUAction->setEnabled(e);
+	eventPIDAction->setEnabled(e);
+	eventTypeAction->setEnabled(e);
+}
+
 void MainWindow::closeTrace()
 {
+	quint64 startt, mresett, clearptt, acloset, disablet;
 	int ts_errno = 0;
+
+	startt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
 	resetFilters();
 
 	eventsWidget->beginResetModel();
@@ -948,12 +1115,21 @@ void MainWindow::closeTrace()
 	cpuSelectDialog->setNrCPUs(0);
 	cpuSelectDialog->endResetModel();
 
+	mresett = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+
 	clearPlot();
+
+	clearptt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+
 	if(analyzer->isOpen()) {
 		analyzer->close(&ts_errno);
 	}
+
+	acloset = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+
 	taskToolBar->clear();
 	setTraceActionsEnabled(false);
+	setEventActionsEnabled(false);
 	setLegendActionsEnabled(false);
 	setCloseActionsEnabled(false);
 	setTaskActionsEnabled(false);
@@ -963,8 +1139,25 @@ void MainWindow::closeTrace()
 	setTaskGraphClearActionEnabled(false);
 	setAddToLegendActionEnabled(false);
 	setStatus(STATUS_NOFILE);
+
 	if (ts_errno != 0)
 		vtl::warn(ts_errno, "Failed to close() trace file");
+
+	disablet = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
+
+	if (( (disablet - startt) > 1000 )) {
+		printf( "\n\n\n"
+			"This is a diagnostic message generated because "
+			"closing the trace took more than\n"
+			"one second:\n"
+			"MainWindow::closeTrace() took %.6lf s\n"
+			"MainWindow::clearPlot() took %.6lf s\n"
+			"analyzer->close() took %.6lf s\n",
+			(double) (disablet - startt) / 1000,
+			(double) (clearptt - mresett) / 1000,
+			(double) (acloset - clearptt) / 1000);
+		fflush(stdout);
+	}
 }
 
 void MainWindow::saveScreenshot()
@@ -1038,16 +1231,36 @@ void MainWindow::cursorZoom()
 	tracePlot->replot();
 }
 
+void MainWindow::fullZoom()
+{
+	tracePlot->yAxis->setRange(QCPRange(bottom, top));
+	tracePlot->xAxis->setRange(QCPRange(startTime, endTime));
+	tracePlot->replot();
+}
+
 void MainWindow::defaultZoom()
 {
-	double start, end;
-
-	start = analyzer->getStartTime().toDouble();
-	end = analyzer->getEndTime().toDouble();
-
-	tracePlot->yAxis->setRange(QCPRange(bottom, top));
-	tracePlot->xAxis->setRange(QCPRange(start, end));
+	tracePlot->yAxis->setRange(QCPRange(bottom, bottom + autoZoomVSize()));
+	tracePlot->xAxis->setRange(QCPRange(startTime, endTime));
 	tracePlot->replot();
+}
+
+void MainWindow::verticalZoom()
+{
+	bool actionChecked = verticalZoomAction->isChecked();
+	bool axisSelected = tracePlot->yAxis->selectedParts().
+		testFlag(QCPAxis::spAxis);
+
+	if (actionChecked != axisSelected) {
+		QCPAxis::SelectableParts selected =
+			tracePlot->yAxis->selectedParts();
+		if (actionChecked)
+			selected |= QCPAxis::spAxis;
+		else
+			selected ^= QCPAxis::spAxis;
+		tracePlot->yAxis->setSelectedParts(selected);
+		tracePlot->replot();
+	}
 }
 
 void MainWindow::about()
@@ -1062,7 +1275,7 @@ void MainWindow::about()
 	       "</p>"
 		).arg(QLatin1String(TRACESHARK_VERSION_STRING));
 	textAbout = QMessageBox::tr(
-	       "<p>Copyright &copy; 2014-2019 Viktor Rosendahl"
+	       "<p>Copyright &copy; 2014-2020 Viktor Rosendahl"
 	       "<p>This program comes with ABSOLUTELY NO WARRANTY; details below."
 	       "<p>This is free software, and you are welcome to redistribute it"
 	       " under certain conditions; select \"License\" under the \"Help\""
@@ -1107,7 +1320,7 @@ void MainWindow::about()
 	msgBox->setText(textAboutCaption);
 	msgBox->setInformativeText(textAbout);
 
-	QPixmap pm(QLatin1String(RESSRC_PNG_SHARK));
+	QPixmap pm(QLatin1String(RESSRC_GPH_SHARK));
 	if (!pm.isNull())
 		msgBox->setIconPixmap(pm);
 	msgBox->show();
@@ -1120,7 +1333,11 @@ void MainWindow::aboutQCustomPlot()
 
 	textAboutCaption = QMessageBox::tr(
 	       "<h1>About QCustomPlot</h1>"
+#ifdef CONFIG_SYSTEM_QCUSTOMPLOT
+	       "<p>This program uses QCustomPlot %1.</p>"
+#else
 	       "<p>This program contains a modified version of QCustomPlot %1.</p>"
+#endif
 		).arg(QLatin1String(QCUSTOMPLOT_VERSION_STR));
 	textAbout = QMessageBox::tr(
 	       "<p>Copyright &copy; 2011-2018 Emanuel Eichhammer"
@@ -1138,7 +1355,7 @@ void MainWindow::aboutQCustomPlot()
 	msgBox->setText(textAboutCaption);
 	msgBox->setInformativeText(textAbout);
 
-	QPixmap pm(QLatin1String(RESSRC_PNG_QCP_LOGO));
+	QPixmap pm(QLatin1String(RESSRC_GPH_QCP_LOGO));
 	if (!pm.isNull())
 		msgBox->setIconPixmap(pm);
 	msgBox->show();
@@ -1154,16 +1371,10 @@ void MainWindow::license()
 
 void MainWindow::mouseWheel()
 {
-	bool xSelected = tracePlot->yAxis->selectedParts().
-		testFlag(QCPAxis::spAxis);
 	bool ySelected = tracePlot->yAxis->selectedParts().
 		testFlag(QCPAxis::spAxis);
 
-	/* This is not possible but would be cool */
-	if (xSelected && ySelected)
-		tracePlot->axisRect()->setRangeZoom(Qt::Vertical |
-						    Qt::Horizontal);
-	else if (ySelected)
+	if (ySelected)
 		tracePlot->axisRect()->setRangeZoom(Qt::Vertical);
 	else
 		tracePlot->axisRect()->setRangeZoom(Qt::Horizontal);
@@ -1171,7 +1382,7 @@ void MainWindow::mouseWheel()
 
 void MainWindow::mousePress()
 {
-	bool xSelected = tracePlot->yAxis->selectedParts().
+	bool xSelected = tracePlot->xAxis->selectedParts().
 		testFlag(QCPAxis::spAxis);
 	bool ySelected = tracePlot->yAxis->selectedParts().
 		testFlag(QCPAxis::spAxis);
@@ -1184,6 +1395,43 @@ void MainWindow::mousePress()
 		tracePlot->axisRect()->setRangeDrag(Qt::Vertical);
 	else
 		tracePlot->axisRect()->setRangeDrag(Qt::Horizontal);
+}
+
+void MainWindow::yAxisSelectionChange(const QCPAxis::SelectableParts &parts)
+{
+	bool actionChecked = verticalZoomAction->isChecked();
+	bool ySelected = parts.testFlag(QCPAxis::spAxis);
+	QString text;
+	/*
+	 * We could also have used the following:
+	 * bool ySelected = tracePlot->yAxis->selectedParts().
+	 * testFlag(QCPAxis::spAxis);
+	 */
+
+	if (ySelected != actionChecked) {
+		verticalZoomAction->setChecked(ySelected);
+	}
+}
+
+void MainWindow::scrollBarChanged(int value)
+{
+	const QCPRange &zrange = tracePlot->yAxis->range();
+	double high = TSMAX(top, zrange.upper);
+	double low = TSMIN(bottom + zrange.size(), zrange.upper);
+	double diff = TSABS(high - low);
+	double quantum = 1.0L / scrollBar->maximum() * diff;
+	QCPRange newrange;
+
+	newrange.upper = value * quantum + low;
+	newrange.lower = newrange.upper - zrange.size();
+	tracePlot->yAxis->setRange(newrange);
+	tracePlot->replot();
+}
+
+void MainWindow::yAxisChanged(QCPRange /*range*/)
+{
+	if (!scrollBarUpdate)
+		configureScrollBar();
 }
 
 void MainWindow::plotDoubleClicked(QMouseEvent *event)
@@ -1243,9 +1491,15 @@ void MainWindow::infoValueChanged(vtl::Time value, int nr)
 void MainWindow::moveActiveCursor(vtl::Time time)
 {
 	int cursorIdx;
-	double dblTime = time.toDouble();
 
 	cursorIdx = infoWidget->getCursorIdx();
+	moveCursor(time, cursorIdx);
+}
+
+void MainWindow::moveCursor(vtl::Time time, int cursorIdx)
+{
+	double dblTime = time.toDouble();
+
 	if (cursorIdx != TShark::RED_CURSOR && cursorIdx != TShark::BLUE_CURSOR)
 		return;
 
@@ -1258,9 +1512,32 @@ void MainWindow::moveActiveCursor(vtl::Time time)
 	}
 }
 
-void MainWindow::showEventInfo(const TraceEvent &event)
+void MainWindow::handleEventDoubleClicked(EventsModel::column_t col,
+					  const TraceEvent &event)
 {
-	eventInfoDialog->show(event, *analyzer->getTraceFile());
+	switch (col) {
+	case EventsModel::COLUMN_TIME:
+		moveActiveCursor(event.time);
+		break;
+	case EventsModel::COLUMN_TASKNAME:
+		/* Do nothing, not yet implemented */
+		break;
+	case EventsModel::COLUMN_PID:
+		createEventPIDFilter(event);
+		break;
+	case EventsModel::COLUMN_CPU:
+		createEventCPUFilter(event);
+		break;
+	case EventsModel::COLUMN_TYPE:
+		createEventTypeFilter(event);
+		break;
+	case EventsModel::COLUMN_INFO:
+		eventInfoDialog->show(event, *analyzer->getTraceFile());
+		break;
+	default:
+		/* This should not happen ? */
+		break;
+	}
 }
 
 void MainWindow::taskTriggered(int pid)
@@ -1272,7 +1549,10 @@ void MainWindow::handleEventSelected(const TraceEvent *event)
 {
 	if (event == nullptr) {
 		handleWakeUpChanged(false);
+		handleEventChanged(false);
 		return;
+	} else {
+		handleEventChanged(true);
 	}
 
 	if (event->type == SCHED_WAKEUP || event->type == SCHED_WAKEUP_NEW) {
@@ -1287,93 +1567,109 @@ void MainWindow::handleWakeUpChanged(bool selected)
 	setWakeupActionsEnabled(selected);
 }
 
+void MainWindow::handleEventChanged(bool selected)
+{
+	setEventActionsEnabled(selected);
+}
+
 void MainWindow::createActions()
 {
 	openAction = new QAction(tr("&Open..."), this);
-	openAction->setIcon(QIcon(RESSRC_PNG_OPEN));
+	openAction->setIcon(QIcon(RESSRC_GPH_OPEN));
 	openAction->setShortcuts(QKeySequence::Open);
 	openAction->setToolTip(tr(TOOLTIP_OPEN));
 	tsconnect(openAction, triggered(), this, openTrace());
 
 	closeAction = new QAction(tr("&Close"), this);
-	closeAction->setIcon(QIcon(RESSRC_PNG_CLOSE));
+	closeAction->setIcon(QIcon(RESSRC_GPH_CLOSE));
 	closeAction->setShortcuts(QKeySequence::Close);
 	closeAction->setToolTip(tr(TOOLTIP_CLOSE));
 	tsconnect(closeAction, triggered(), this, closeTrace());
 
 	saveAction = new QAction(tr("&Save screenshot as..."), this);
-	saveAction->setIcon(QIcon(RESSRC_PNG_SCREENSHOT));
+	saveAction->setIcon(QIcon(RESSRC_GPH_SCREENSHOT));
 	saveAction->setShortcuts(QKeySequence::SaveAs);
 	saveAction->setToolTip(tr(TOOLTIP_SAVESCREEN));
 	tsconnect(saveAction, triggered(), this, saveScreenshot());
 
-	showTasksAction = new QAction(tr("Show task list..."), this);
-	showTasksAction->setIcon(QIcon(RESSRC_PNG_TASKSELECT));
+	showTasksAction = new QAction(tr("Show task &list..."), this);
+	showTasksAction->setIcon(QIcon(RESSRC_GPH_TASKSELECT));
 	showTasksAction->setToolTip(tr(TOOLTIP_SHOWTASKS));
 	tsconnect(showTasksAction, triggered(), this, showTaskSelector());
 
-	filterCPUsAction = new QAction(tr("Filter on CPUs..."), this);
-	filterCPUsAction->setIcon(QIcon(RESSRC_PNG_CPUFILTER));
+	filterCPUsAction = new QAction(tr("Filter on &CPUs..."), this);
+	filterCPUsAction->setIcon(QIcon(RESSRC_GPH_CPUFILTER));
 	filterCPUsAction->setToolTip(tr(TOOLTIP_CPUFILTER));
 	tsconnect(filterCPUsAction, triggered(), this, filterOnCPUs());
 
-	showEventsAction = new QAction(tr("Filter on event type..."), this);
-	showEventsAction->setIcon(QIcon(RESSRC_PNG_EVENTFILTER));
+	showEventsAction = new QAction(tr("Filter on &event type..."), this);
+	showEventsAction->setIcon(QIcon(RESSRC_GPH_EVENTFILTER));
 	showEventsAction->setToolTip(tr(TOOLTIP_SHOWEVENTS));
 	tsconnect(showEventsAction, triggered(), this, showEventFilter());
 
-	timeFilterAction = new QAction(tr("Filter on time"), this);
-	timeFilterAction->setIcon(QIcon(RESSRC_PNG_TIMEFILTER));
+	timeFilterAction = new QAction(tr("Filter on &time"), this);
+	timeFilterAction->setIcon(QIcon(RESSRC_GPH_TIMEFILTER));
 	timeFilterAction->setToolTip(tr(TOOLTIP_TIMEFILTER));
 	tsconnect(timeFilterAction, triggered(), this, timeFilter());
 
-	graphEnableAction = new QAction(tr("Select graphs..."), this);
-	graphEnableAction->setIcon(QIcon(RESSRC_PNG_GRAPHENABLE));
+	graphEnableAction = new QAction(tr("Select &graphs..."), this);
+	graphEnableAction->setIcon(QIcon(RESSRC_GPH_GRAPHENABLE));
 	graphEnableAction->setToolTip(tr(TOOLTIP_GRAPHENABLE));
 	tsconnect(graphEnableAction, triggered(), this, showGraphEnable());
 
-	resetFiltersAction = new QAction(tr("Reset all filters"), this);
-	resetFiltersAction->setIcon(QIcon(RESSRC_PNG_RESETFILTERS));
+	resetFiltersAction = new QAction(tr("&Reset all filters"), this);
+	resetFiltersAction->setIcon(QIcon(RESSRC_GPH_RESETFILTERS));
 	resetFiltersAction->setToolTip(tr(TOOLTIP_RESETFILTERS));
 	resetFiltersAction->setEnabled(false);
 	tsconnect(resetFiltersAction, triggered(), this, resetFilters());
 
-	exportEventsAction = new QAction(tr("Export events to a file..."),
+	exportEventsAction = new QAction(tr("&Export events to a file..."),
 					 this);
-	exportEventsAction->setIcon(QIcon(RESSRC_PNG_EXPORTEVENTS));
+	exportEventsAction->setIcon(QIcon(RESSRC_GPH_EXPORTEVENTS));
 	exportEventsAction->setToolTip(tr(TOOLTIP_EXPORTEVENTS));
 	exportEventsAction->setEnabled(false);
 	tsconnect(exportEventsAction, triggered(), this,
 		  exportEventsTriggered());
 
 	exportCPUAction = new QAction(
-		tr("Export cpu-cycles events to a file..."), this);
-	exportCPUAction->setIcon(QIcon(RESSRC_PNG_EXPORTCPUEVENTS));
+		tr("Ex&port cpu-cycles events to a file..."), this);
+	exportCPUAction->setIcon(QIcon(RESSRC_GPH_EXPORTCPUEVENTS));
 	exportCPUAction->setToolTip(tr(TOOLTIP_EXPORT_CPU));
 	exportCPUAction->setEnabled(false);
 	tsconnect(exportCPUAction, triggered(), this,
 		  exportCPUTriggered());
 
-	cursorZoomAction = new QAction(tr("Cursor zoom"), this);
-	cursorZoomAction->setIcon(QIcon(RESSRC_PNG_CURSOR_ZOOM));
+	cursorZoomAction = new QAction(tr("Cursor &zoom"), this);
+	cursorZoomAction->setIcon(QIcon(RESSRC_GPH_CURSOR_ZOOM));
 	cursorZoomAction->setToolTip(tr(CURSOR_ZOOM_TOOLTIP));
 	tsconnect(cursorZoomAction, triggered(), this, cursorZoom());
 
-	defaultZoomAction = new QAction(tr("Default zoom"), this);
-	defaultZoomAction->setIcon(QIcon(RESSRC_PNG_DEFAULT_ZOOM));
+	defaultZoomAction = new QAction(tr("&Default zoom"), this);
+	defaultZoomAction->setIcon(QIcon(RESSRC_GPH_DEFAULT_ZOOM));
 	defaultZoomAction->setToolTip(tr(DEFAULT_ZOOM_TOOLTIP));
 	tsconnect(defaultZoomAction, triggered(), this,
 		  defaultZoom());
 
-	showStatsAction = new QAction(tr("Show stats..."), this);
-	showStatsAction->setIcon(QIcon(RESSRC_PNG_GETSTATS));
+	fullZoomAction = new QAction(tr("&Full zoom"), this);
+	fullZoomAction->setIcon(QIcon(RESSRC_GPH_FULL_ZOOM));
+	fullZoomAction->setToolTip(tr(FULL_ZOOM_TOOLTIP));
+	tsconnect(fullZoomAction, triggered(), this, fullZoom());
+
+	verticalZoomAction = new QAction("&Vertical zooming/scrolling", this);
+	verticalZoomAction->setIcon(QIcon(RESSRC_GPH_VERTICAL_ZOOM));
+	verticalZoomAction->setToolTip(tr(VERTICAL_ZOOM_TOOLTIP));
+	verticalZoomAction->setCheckable(true);
+	tsconnect(verticalZoomAction, triggered(), this, verticalZoom());;
+
+	showStatsAction = new QAction(tr("Sh&ow stats..."), this);
+	showStatsAction->setIcon(QIcon(RESSRC_GPH_GETSTATS));
 	showStatsAction->setToolTip(TOOLTIP_GETSTATS);
 	tsconnect(showStatsAction, triggered(), this, showStats());
 
 	showStatsTimeLimitedAction = new QAction(
-		tr("Show stats cursor time..."), this);
+		tr("Show stats c&ursor time..."), this);
 	showStatsTimeLimitedAction->setIcon(
-		QIcon(RESSRC_PNG_GETSTATS_TIMELIMIT));
+		QIcon(RESSRC_GPH_GETSTATS_TIMELIMIT));
 	showStatsTimeLimitedAction->setToolTip(TOOLTIP_GETSTATS_TIMELIMITED);
 	tsconnect(showStatsTimeLimitedAction, triggered(), this,
 		  showStatsTimeLimited());
@@ -1383,18 +1679,48 @@ void MainWindow::createActions()
 	exitAction->setToolTip(tr(TOOLTIP_EXIT));
 	tsconnect(exitAction, triggered(), this, close());
 
+	backTraceAction = new QAction(tr("&Show backtrace"), this);
+	backTraceAction->setIcon(QIcon(RESSRC_GPH_EVENTBTRACE));
+	backTraceAction->setToolTip(tr(EVENT_BACKTRACE_TOOLTIP));
+	tsconnect(backTraceAction, triggered(), this, showBackTraceTriggered());
+
+	moveBlueAction = new QAction(tr("Move &blue cursor"), this);
+	moveBlueAction->setIcon(QIcon(RESSRC_GPH_EVENTMOVEBLUE));
+	moveBlueAction->setToolTip(tr(EVENT_MOVEBLUE_TOOLTIP));
+	tsconnect(moveBlueAction, triggered(), this, eventMoveBlueTriggered());
+
+	moveRedAction = new QAction(tr("Move &red cursor"), this);
+	moveRedAction->setIcon(QIcon(RESSRC_GPH_EVENTMOVERED));
+	moveRedAction->setToolTip(tr(EVENT_MOVERED_TOOLTIP));
+	tsconnect(moveRedAction, triggered(), this, eventMoveRedTriggered());
+
+	eventPIDAction = new QAction(tr("Filter on event &PID"), this);
+	eventPIDAction->setIcon(QIcon(RESSRC_GPH_EVENTFLTPID));
+	eventPIDAction->setToolTip(tr(EVENT_PID_TOOLTIP));
+	tsconnect(eventPIDAction, triggered(), this, eventPIDTriggered());
+
+	eventCPUAction = new QAction(tr("Filter on event &CPU"), this);
+	eventCPUAction->setIcon(QIcon(RESSRC_GPH_EVENTFLTCPU));
+	eventCPUAction->setToolTip(tr(EVENT_CPU_TOOLTIP));
+	tsconnect(eventCPUAction, triggered(), this, eventCPUTriggered());
+
+	eventTypeAction = new QAction(tr("Filter on event &type"), this);
+	eventTypeAction->setIcon(QIcon(RESSRC_GPH_EVENTFLTTYPE));
+	eventTypeAction->setToolTip(tr(EVENT_TYPE_TOOLTIP));
+	tsconnect(eventTypeAction, triggered(), this, eventTypeTriggered());
+
 	aboutQtAction = new QAction(tr("About &Qt"), this);
-	aboutQtAction->setIcon(QIcon(RESSRC_PNG_QT_LOGO));
+	aboutQtAction->setIcon(QIcon(RESSRC_GPH_QT_LOGO));
 	aboutQtAction->setToolTip(tr(ABOUT_QT_TOOLTIP));
 	tsconnect(aboutQtAction, triggered(), qApp, aboutQt());
 
 	aboutAction = new QAction(tr("&About Traceshark"), this);
-	aboutAction->setIcon(QIcon(RESSRC_PNG_SHARK));
+	aboutAction->setIcon(QIcon(RESSRC_GPH_SHARK));
 	aboutAction->setToolTip(tr(ABOUT_TSHARK_TOOLTIP));
 	tsconnect(aboutAction, triggered(), this, about());
 
 	aboutQCPAction = new QAction(tr("About QCustom&Plot"), this);
-	aboutQCPAction->setIcon(QIcon(RESSRC_PNG_QCP_LOGO));
+	aboutQCPAction->setIcon(QIcon(RESSRC_GPH_QCP_LOGO));
 	aboutAction->setToolTip(tr(SHOW_QCP_TOOLTIP));
 	tsconnect(aboutQCPAction, triggered(), this, aboutQCustomPlot());
 
@@ -1402,70 +1728,71 @@ void MainWindow::createActions()
 	licenseAction->setToolTip(tr(SHOW_LICENSE_TOOLTIP));
 	tsconnect(licenseAction, triggered(), this, license());
 
-	addTaskGraphAction = new QAction(tr("Add task graph"), this);
-	addTaskGraphAction->setIcon(QIcon(RESSRC_PNG_ADD_TASK));
+	addTaskGraphAction = new QAction(tr("Add task &graph"), this);
+	addTaskGraphAction->setIcon(QIcon(RESSRC_GPH_ADD_TASK));
 	addTaskGraphAction->setToolTip(tr(ADD_UNIFIED_TOOLTIP));
 	tsconnect(addTaskGraphAction, triggered(), this,
 		  addTaskGraphTriggered());
 
-	addToLegendAction = new QAction(tr("Add task to the legend"), this);
-	addToLegendAction->setIcon(QIcon(RESSRC_PNG_ADD_TO_LEGEND));
+	addToLegendAction = new QAction(tr("&Add task to the legend"), this);
+	addToLegendAction->setIcon(QIcon(RESSRC_GPH_ADD_TO_LEGEND));
 	addToLegendAction->setToolTip(tr(ADD_LEGEND_TOOLTIP));
 	tsconnect(addToLegendAction, triggered(), this, addToLegendTriggered());
 
-	clearLegendAction = new QAction(tr("Clear the legend"), this);
-	clearLegendAction->setIcon(QIcon(RESSRC_PNG_CLEAR_LEGEND));
+	clearLegendAction = new QAction(tr("&Clear the legend"), this);
+	clearLegendAction->setIcon(QIcon(RESSRC_GPH_CLEAR_LEGEND));
 	clearLegendAction->setToolTip(tr(CLEAR_LEGEND_TOOLTIP));
 	tsconnect(clearLegendAction, triggered(), this, clearLegendTriggered());
 
-	findWakeupAction = new QAction(tr("Find wakeup"), this);
-	findWakeupAction->setIcon(QIcon(RESSRC_PNG_FIND_WAKEUP));
+	findWakeupAction = new QAction(tr("&Find wakeup"), this);
+	findWakeupAction->setIcon(QIcon(RESSRC_GPH_FIND_WAKEUP));
 	findWakeupAction->setToolTip(tr(FIND_WAKEUP_TOOLTIP));
 	tsconnect(findWakeupAction, triggered(), this, findWakeupTriggered());
 
-	findWakingAction = new QAction(tr("Find waking"), this);
-	findWakingAction->setIcon(QIcon(RESSRC_PNG_FIND_WAKING));
+	findWakingAction = new QAction(tr("Find &waking"), this);
+	findWakingAction->setIcon(QIcon(RESSRC_GPH_FIND_WAKING));
 	findWakingAction->setToolTip(tr(FIND_WAKING_TOOLTIP));
 	tsconnect(findWakingAction, triggered(), this, findWakingTriggered());
 
-	findWakingDirectAction = new QAction(tr("Find waking direct"), this);
-	findWakingDirectAction->setIcon(QIcon(RESSRC_PNG_FIND_WAKING_DIRECT));
+	findWakingDirectAction = new QAction(tr("Find waking &direct"), this);
+	findWakingDirectAction->setIcon(QIcon(RESSRC_GPH_FIND_WAKING_DIRECT));
 	findWakingDirectAction->setToolTip(tr(FIND_WAKING_DIRECT_TOOLTIP));
 	tsconnect(findWakingDirectAction, triggered(), this,
 		  findWakingDirectTriggered());
 
-	findSleepAction = new QAction(tr("Find sched_switch sleep event"),
+	findSleepAction = new QAction(tr("Find sched_switch &sleep event"),
 				      this);
-	findSleepAction->setIcon(QIcon(RESSRC_PNG_FIND_SLEEP));
+	findSleepAction->setIcon(QIcon(RESSRC_GPH_FIND_SLEEP));
 	findSleepAction->setToolTip(tr(TOOLTIP_FIND_SLEEP));
 	tsconnect(findSleepAction, triggered(), this, findSleepTriggered());
 
-	removeTaskGraphAction = new QAction(tr("Remove task graph"), this);
-	removeTaskGraphAction->setIcon(QIcon(RESSRC_PNG_REMOVE_TASK));
+	removeTaskGraphAction = new QAction(tr("&Remove task graph"), this);
+	removeTaskGraphAction->setIcon(QIcon(RESSRC_GPH_REMOVE_TASK));
 	removeTaskGraphAction->setToolTip(tr(REMOVE_TASK_TOOLTIP));
 	tsconnect(removeTaskGraphAction, triggered(), this,
 		  removeTaskGraphTriggered());
 
-	clearTaskGraphsAction = new QAction(tr("Remove task graph"), this);
-	clearTaskGraphsAction->setIcon(QIcon(RESSRC_PNG_CLEAR_TASK));
+	clearTaskGraphsAction = new QAction(tr("Cl&ear all task graphs"), this);
+	clearTaskGraphsAction->setIcon(QIcon(RESSRC_GPH_CLEAR_TASK));
 	clearTaskGraphsAction->setToolTip(tr(CLEAR_TASK_TOOLTIP));
 	tsconnect(clearTaskGraphsAction, triggered(), this,
 		  clearTaskGraphsTriggered());
 
-	taskFilterAction = new QAction(tr("Filter on selected task"), this);
-	taskFilterAction->setIcon(QIcon(RESSRC_PNG_FILTERCURRENT));
+	taskFilterAction = new QAction(tr("Filter on selected &task"), this);
+	taskFilterAction->setIcon(QIcon(RESSRC_GPH_FILTERCURRENT));
 	taskFilterAction->setToolTip(tr(TASK_FILTER_TOOLTIP));
 	tsconnect(taskFilterAction, triggered(), this,
 		  taskFilterTriggered());
 
 	taskFilterLimitedAction =
-		new QAction(tr("Filter on selected task (time limited)"), this);
-	taskFilterLimitedAction->setIcon(QIcon(RESSRC_PNG_FILTERCURRENT_LIMIT));
+		new QAction(tr("Filter on selected task (time &limited)"), this);
+	taskFilterLimitedAction->setIcon(QIcon(RESSRC_GPH_FILTERCURRENT_LIMIT));
 	taskFilterLimitedAction->setToolTip(tr(TASK_FILTER_TIMELIMIT_TOOLTIP));
 	tsconnect(taskFilterLimitedAction, triggered(), this,
 		  taskFilterLimitedTriggered());
 
 	setTraceActionsEnabled(false);
+	setEventActionsEnabled(false);
 	setLegendActionsEnabled(false);
 	setCloseActionsEnabled(false);
 	setTaskActionsEnabled(false);
@@ -1492,6 +1819,8 @@ void MainWindow::createToolBars()
 	addToolBar(Qt::LeftToolBarArea, viewToolBar);
 	viewToolBar->addAction(cursorZoomAction);
 	viewToolBar->addAction(defaultZoomAction);
+	viewToolBar->addAction(fullZoomAction);
+	viewToolBar->addAction(verticalZoomAction);
 	viewToolBar->addAction(showTasksAction);
 	viewToolBar->addAction(filterCPUsAction);
 	viewToolBar->addAction(showEventsAction);
@@ -1538,6 +1867,8 @@ void MainWindow::createMenus()
 	viewMenu = menuBar()->addMenu(tr("&View"));
 	viewMenu->addAction(cursorZoomAction);
 	viewMenu->addAction(defaultZoomAction);
+	viewMenu->addAction(fullZoomAction);
+	viewMenu->addAction(verticalZoomAction);
 	viewMenu->addAction(showTasksAction);
 	viewMenu->addAction(filterCPUsAction);
 	viewMenu->addAction(showEventsAction);
@@ -1560,7 +1891,15 @@ void MainWindow::createMenus()
 	taskMenu->addAction(taskFilterAction);
 	taskMenu->addAction(taskFilterLimitedAction);
 
-	helpMenu = menuBar()->addMenu(tr("&Help"));
+	eventMenu = menuBar()->addMenu(tr("&Event"));
+	eventMenu->addAction(backTraceAction);
+	eventMenu->addAction(moveBlueAction);
+	eventMenu->addAction(moveRedAction);
+	eventMenu->addAction(eventPIDAction);
+	eventMenu->addAction(eventCPUAction);
+	eventMenu->addAction(eventTypeAction);
+
+	helpMenu = menuBar()->addMenu(tr("He&lp"));
 	helpMenu->addAction(aboutAction);
 	helpMenu->addAction(aboutQCPAction);
 	helpMenu->addAction(aboutQtAction);
@@ -1576,7 +1915,7 @@ void MainWindow::createStatusBar()
 
 	statusStrings[STATUS_NOFILE] = new QString(tr("No file loaded"));
 	statusStrings[STATUS_FILE] = new QString(tr("Loaded file "));
-	statusStrings[STATUS_ERROR] = new QString(tr("An error has occured"));
+	statusStrings[STATUS_ERROR] = new QString(tr("An error has occurred"));
 
 	setStatus(STATUS_NOFILE);
 }
@@ -1628,10 +1967,10 @@ void MainWindow::widgetConnections()
 		  this, infoValueChanged(vtl::Time, int));
 
 	/* Events widget */
-	tsconnect(eventsWidget, timeSelected(vtl::Time), this,
-		  moveActiveCursor(vtl::Time));
-	tsconnect(eventsWidget, infoDoubleClicked(const TraceEvent &),
-		  this, showEventInfo(const TraceEvent &));
+	tsconnect(eventsWidget, eventDoubleClicked(EventsModel::column_t,
+						   const TraceEvent &),
+		  this, handleEventDoubleClicked(EventsModel::column_t,
+						 const TraceEvent &));
 	tsconnect(eventsWidget, eventSelected(const TraceEvent *),
 		  this, handleEventSelected(const TraceEvent *));
 
@@ -1869,6 +2208,30 @@ void MainWindow::timeFilter(void)
 	eventsWidget->endResetModel();
 	scrollTo(saved);
 	updateResetFiltersEnabled();
+}
+
+void MainWindow::createEventCPUFilter(const TraceEvent &event)
+{
+	eventCPUMap.clear();
+	eventCPUMap[event.cpu] =  event.cpu;
+	createCPUFilter(eventCPUMap, false);
+}
+
+void MainWindow::createEventPIDFilter(const TraceEvent &event)
+{
+	bool incl;
+
+	incl = settingStore->getValue(Setting::EVENT_PID_FLT_INCL_ON).boolv();
+	eventPIDMap.clear();
+	eventPIDMap[event.pid] = event.pid;
+	createPidFilter(eventPIDMap, false, incl);
+}
+
+void MainWindow::createEventTypeFilter(const TraceEvent &event)
+{
+	eventTypeMap.clear();
+	eventTypeMap[event.type] = event.type;
+	createEventFilter(eventTypeMap, false);
 }
 
 void MainWindow::createPidFilter(QMap<int, int> &map,
@@ -2259,7 +2622,9 @@ void MainWindow::addAccessoryTaskGraph(QCPGraph **graphPtr,
 	/* Add the still running graph on top of the other two... */
 	QCPGraph *graph;
 	QPen pen;
-	QCPScatterStyle style = QCPScatterStyle(sshape, size);
+	const int lwidth = settingStore->getValue(Setting::LINE_WIDTH).intv();
+	const double adjsize = adjustScatterSize(size, lwidth);
+	QCPScatterStyle style = QCPScatterStyle(sshape, adjsize);
 	if (timev.size() <= 0) {
 		*graphPtr = nullptr;
 		return;
@@ -2267,6 +2632,7 @@ void MainWindow::addAccessoryTaskGraph(QCPGraph **graphPtr,
 	graph = tracePlot->addGraph(tracePlot->xAxis, tracePlot->yAxis);
 	graph->setName(name);
 	pen.setColor(color);
+	pen.setWidth(settingStore->getValue(Setting::LINE_WIDTH).intv());
 	style.setPen(pen);
 	graph->setScatterStyle(style);
 	graph->setLineStyle(QCPGraph::lsNone);
@@ -2784,15 +3150,15 @@ void MainWindow::setupOpenGL()
 	    settingStore->getValue(Setting::OPENGL_ENABLED).boolv()) {
 		if (!isOpenGLEnabled()) {
 			tracePlot->setOpenGl(true, 4);
-			if (tracePlot->openGl()) {
-				printf("OpenGL rendering enabled\n");
+			if (!tracePlot->openGl()) {
+				qcp_warn_failed_opengl_enable();
 			}
 		}
 	} else {
 		if (isOpenGLEnabled()) {
 			tracePlot->setOpenGl(false, 4);
-			if (!tracePlot->openGl()) {
-				printf("OpenGL rendering disabled\n");
+			if (tracePlot->openGl()) {
+				qcp_warn_failed_opengl_disable();
 			}
 		}
 	}
@@ -2922,4 +3288,54 @@ void MainWindow::taskFilterLimitedTriggered()
 {
 	timeFilter();
 	taskFilter();
+}
+
+void MainWindow::showBackTraceTriggered()
+{
+	const TraceEvent *event = eventsWidget->getSelectedEvent();
+
+	if (event != nullptr)
+		eventInfoDialog->show(*event, *analyzer->getTraceFile());
+}
+
+void MainWindow::eventCPUTriggered()
+{
+	const TraceEvent *event = eventsWidget->getSelectedEvent();
+
+	if (event != nullptr)
+		createEventCPUFilter(*event);
+}
+
+void MainWindow::eventTypeTriggered()
+{
+	const TraceEvent *event = eventsWidget->getSelectedEvent();
+
+	if (event != nullptr)
+		createEventTypeFilter(*event);
+}
+
+void MainWindow::eventPIDTriggered()
+{
+	const TraceEvent *event = eventsWidget->getSelectedEvent();
+
+	if (event != nullptr)
+		createEventPIDFilter(*event);
+}
+
+void MainWindow::eventMoveBlueTriggered()
+{
+	const TraceEvent *event = eventsWidget->getSelectedEvent();
+
+	if (event != nullptr) {
+		moveCursor(event->time, TShark::BLUE_CURSOR);
+	}
+}
+
+void MainWindow::eventMoveRedTriggered()
+{
+	const TraceEvent *event = eventsWidget->getSelectedEvent();
+
+	if (event != nullptr) {
+		moveCursor(event->time, TShark::RED_CURSOR);
+	}
 }

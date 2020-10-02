@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2018  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2018, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -53,6 +53,7 @@
 #include "parser/fileinfo.h"
 
 #include "misc/errors.h"
+#include "misc/osapi.h"
 #include "misc/traceshark.h"
 
 extern "C" {
@@ -82,8 +83,7 @@ bool FileInfo::cmpStat(int fd, int *ts_errno)
 	else
 		goto error;
 
-	return  cmp_timespec(s.st_ctim, st.st_ctim) &&
-		cmp_timespec(s.st_mtim, st.st_mtim) &&
+	return cmp_mtimespec(s, st) && cmp_ctimespec(s, st) &&
 		s.st_size == st.st_size;
 
 error:

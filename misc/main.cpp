@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2014, 2015, 2016, 2018
+ * Copyright (C) 2014, 2015, 2016, 2018, 2020
  * Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
@@ -96,9 +96,17 @@ static void parseArguments(QString *fileName, int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
+	/* must be called before QApplication is created */
+#if QT_VERSION >= QT_VERSION_CHECK(5,6,0)
+	QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
+#if QT_VERSION >= QT_VERSION_CHECK(5,1,0)
+	QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+#endif
+
 	QApplication app(argc, argv);
 	MainWindow mainWindow;
-	QPixmap pm(QLatin1String(RESSRC_PNG_SHARK));
+	QPixmap pm(QLatin1String(RESSRC_GPH_SHARK));
 	QIcon icon;
 	QString appname = QLatin1String("Traceshark");
 	QRect geometry;
@@ -108,11 +116,13 @@ int main(int argc, char* argv[])
 	vtl::set_strerror(ts_strerror);
 
 	parseArguments(&fileName, argc, argv);
-/* Set graphicssystem to opengl if we have old enough Qt */
+	/* Set graphicssystem to opengl if we have old enough Qt */
 #if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+#ifdef TRACESHARK_QT4_OPENGL
 	QApplication::setGraphicsSystem("opengl");
 #pragma message(QT4_WARNING)
-#endif
+#endif /* TRACESHARK_QT4_OPENGL */
+#endif /* QT_VERSION < QT_VERSION_CHECK(5, 0, 0) */
 
 	app.setStyle(new TraceSharkStyle);
 	app.setApplicationName(appname);

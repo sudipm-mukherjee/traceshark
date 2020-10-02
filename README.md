@@ -16,11 +16,11 @@ sched_waking
 
 The `sched_waking` events are not really visualized but there is a button to find the `sched_waking` event that has instigated a particular `sched_wakeup` event.
 
-![traceshark screenshot](https://raw.githubusercontent.com/cunctator/traceshark/d04a057f42f9e6fb969c9140517a111fd7f23f46/doc/ts-screenshot3.png)
+![traceshark screenshot](https://raw.githubusercontent.com/cunctator/traceshark/17f9eb317f53317c29166d1d9405874d9296e41f/doc/ts-screenshot4.png)
 
-Above is a screenshot of traceshark. The four uppermost graphs are for displaying CPU idle and frequency states. They are four because the measurement was made on a system with four virtual CPUs. The green graphs with red circles ![idle graph](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/doc/idle-graph.png) show the CPU idle states while the thicker blue graphs ![idle graph](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/doc/freq-graph.png) show the CPU frequency changes.
+Above is a screenshot of traceshark. The eight uppermost graphs are for displaying CPU idle and frequency states. They are eight because the measurement was made on a system with eight virtual CPUs. The green graphs with red circles ![idle graph](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/doc/idle-graph.png) show the CPU idle states while the thicker blue graphs ![idle graph](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/doc/freq-graph.png) show the CPU frequency changes.
 
-Below these four graphs are the per CPU scheduling graphs, the different colors of these graphs are for different tasks. The small vertical bars that are shown just above the per CPU graphs indicates the waiting time between wakeup and being scheduled, the highest height is equal to 20 ms, i.e. a full length means that the waiting time was at least 20 ms, possibly more.
+Below these eight graphs are the per CPU scheduling graphs, the different colors of these graphs are for different tasks. The small vertical bars that are shown just above the per CPU graphs indicates the waiting time between wakeup and being scheduled, the highest height is equal to 20 ms, i.e. a full length means that the waiting time was at least 20 ms, possibly more.
 
  Furthermore, in the scheduling graphs, there are the following subtle markers:
 * ![still running example](https://raw.githubusercontent.com/cunctator/traceshark/b552614ebc40656a6cbaef77e21ee95eb4eb32cd/doc/running60x54.png) The blue triangle indicates that the task was still running when it was scheduled out.
@@ -41,11 +41,29 @@ The task select dialog can be shown by clicking `View -> Show task list`, or by 
 
 The graphs are by default zoomed and scrolled horizontally, i.e. time wise. You can scroll by grabbing the graph with your mouse pointer and zoom with the mouse wheel.
 
-If you instead want to zoom or scroll vertically, you need to select the vertical axis by left clicking on it with your mouse pointer. N.B, you should click directly on the line representing the axis, not on the labels, such as "cpu0", "cpu1", etc. As long as the vertical axis is selected, all scrolling and zooming will be vertical. If you want to switch back to horizontal, then you just need to deselect the axis by clicking on it again. Vertical zooming and scrolling may be particularly useful if you are looking at a trace of a system with a large number of CPUs or if you are short of vertical screen space.
+If you instead want to zoom or scroll vertically, you need to toggle the ![Toggle vertical zoom](https://raw.githubusercontent.com/cunctator/traceshark/67651b9c424d938a1cef99e60e81e948486439fa/images/verticalzoom30x30.png) button.
 
-### 1.1.2 Functionality of the buttons
+Another option is to select the vertical axis by left clicking on it with your mouse pointer. N.B, you should click directly on the line representing the axis, not on the labels, such as "cpu0", "cpu1", etc. As long as the vertical axis is selected, all scrolling and zooming will be vertical. If you want to switch back to horizontal, then you just need to deselect the axis by clicking on it again. Vertical zooming and scrolling may be particularly useful if you are looking at a trace of a system with a large number of CPUs or if you are short of vertical screen space.
 
-There are a number of buttons in the GUI, here is a description of the buttons in the left panel:
+### 1.1.2 Functionality of the menus
+
+The items in the menus are in general duplicated as buttons. However, there is one exception, those that are in the ```Event``` menu.
+
+![traceshark screenshot](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/doc/menu_event.png)
+
+Above is a screenshot of the ```Event``` menu. For these items, there are no push buttons in the GUI. However, these actions can also be triggered by double clicking on the corresponding column of the currently selected event in the events view. Below is a brief explanation of these menu items:
+
+* ![backtrace button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/images/eventbacktrace30x30.png)```Show backtrace```: Shows a dialog window containing the backtrace of the currently selected event. The backtrace dialog window will look somewhat like this:
+![close button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/doc/backtrace.png)
+* ![moveblue button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/images/eventmoveblue30x30.png)```Move blue cursor```: Move the blue cursor to the time of the selected event.
+* ![movered button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/images/eventmovered30x30.png)```Move red cursor```: Move the red cursor to the time of the selected event.
+* ![filterpid button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/images/eventfilterpid30x30.png)```Filter on event PID```: Filter the events view on the PID of the selected event.
+* ![filtercpu button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/images/eventfiltercpu30x30.png)```Filter on event CPU```: Filter the events view on the CPU of the selected event.
+* ![filtertype button](https://raw.githubusercontent.com/cunctator/traceshark/d31d91d0dcd39eea830de1fd9172bf9d309b2bc9/images/eventfiltertype30x30.png)```Filter on event type```: Filter the events view on the type of the selected event.
+
+### 1.1.3 Functionality of the buttons
+
+There are a number of buttons in the GUI. These buttons are also duplicated in the menus.  Here is a description of the buttons in the left panel:
 
 * ![open button](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/open30x30.png) This button is used to open a trace file.
 * ![close button](https://raw.githubusercontent.com/cunctator/traceshark/b2d0b868ea4947d89240dd627f05bb77bd51ce03/images/close30x30.png) Closes the currently open trace.
@@ -64,7 +82,7 @@ There are a number of buttons in the GUI, here is a description of the buttons i
   6. Download the flamegraph software by giving one of the following commands in your home directory:
   ```
   git clone https://github.com/cunctator/FlameGraph.git
-  ````
+  ```
   or
   ```
   git clone https://github.com/brendangregg/FlameGraph.git
@@ -79,7 +97,9 @@ There are a number of buttons in the GUI, here is a description of the buttons i
   You can read more about flame graphs [here](http://www.brendangregg.com/flamegraphs.html).
 * ![Export filtered CPU events](https://raw.githubusercontent.com/cunctator/traceshark/c7168ab2ffffd65f3b87ae6b65c2f9c6a7daed6b/images/exportcpuevents30x30.png) This functions exactly as the previously mentioned ![Export filtered events](https://raw.githubusercontent.com/cunctator/traceshark/c7168ab2ffffd65f3b87ae6b65c2f9c6a7daed6b/images/exportevents30x30.png) button, except that it only exports cycles events. The benefit is that the user doesn't need to separately filter on cycles events. The downside is that if the events of interest have a slightly different name, nothing will be exported. This could be the case with certain kernel versions, particularly heavily patched vendor kernels.
 * ![Cursor zoom](https://raw.githubusercontent.com/cunctator/traceshark/c7168ab2ffffd65f3b87ae6b65c2f9c6a7daed6b/images/cursorzoom30x30.png) Pressing this button will zoom the plot to the time interval that is defined by the cursors. This feature may be especially useful when a very large file has been opened and the response to mouse zooming is sluggish.
-* ![Default zoom](https://raw.githubusercontent.com/cunctator/traceshark/c7168ab2ffffd65f3b87ae6b65c2f9c6a7daed6b/images/defaultzoom30x30.png) Pressing this button will zoom the plot to the default time interval, that is from the beginning to the end of the trace. The height will also be adjusted so that everything is shown vertically too.
+* ![Full zoom](https://raw.githubusercontent.com/cunctator/traceshark/d83b961645e038f55b39d78f2cc9768c8b6a0c2c/images/fullzoom30x30.png) Pressing this button will zoom the plot to the full time interval, that is from the beginning to the end of the trace. The height will also be adjusted so that everything is shown vertically too.
+* ![Default zoom](https://raw.githubusercontent.com/cunctator/traceshark/d83b961645e038f55b39d78f2cc9768c8b6a0c2c/images/defaultzoom30x30.png) Pressing this button will zoom the plot to the default zoom. This is the same as the full zoom, except that if there is not enough vertical screen space for displaying the trace without cluttering, then vertically only a part  of the trace will be displayed and a vertical scroll bar will be displayed.
+* ![Toggle vertical zoom](https://raw.githubusercontent.com/cunctator/traceshark/67651b9c424d938a1cef99e60e81e948486439fa/images/verticalzoom30x30.png) Pressing this button will toggle the vertical zooming and scrolling. The effect is the same as toggling the selection of the vertical axis.
 * ![Select which types of graphs should be enabled](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/graphenabledialog30x30.png) Pressing this button will open a dialog that allows the user to select which types of graphs will be displayed. Here it is possible to disable certain graphs, for example CPU idle graphs that frequently may be of little interest. It is also possible to enable horizontal wakeup graphs for the per CPU task graphs that are disabled by default, because they will frequently overlap each other. If OpenGL is enabled at compile time, then it is possible to select the desired line width of the scheduling graphs. Otherwise, the line width will always be set to 1. The dialog has an `Apply & Save` button that allows the user to save the settings to `$HOME/.traceshark`, so that they will be remembered the next time traceshark is started.
 * ![Show global statistics](https://github.com/cunctator/traceshark/raw/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/getstats30x30.png) Pressing this button will show a dialog with global statistics on the left side of the plot. The statistics show how many % of the CPU time each task has consumed as well as the time consumed. The percentages are percentage of a core. This means that the maximum for a normal task is 100% and for the idle task, swapper with pid 0, the maximum is `N * 100`, where N is the number of CPUs. The tasks are sorted so that those tasks that consume more CPU time are shown earlier. The dialog has buttons for adding selected tasks to the legend, to add them as task graphs, to filter the events view on them, or to reset the filtering. There is even a button to close the dialog.
 * ![Show statistics limited by cursors](https://github.com/cunctator/traceshark/raw/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/getstatstimelimit30x30.png) Pressing this button will show a dialog with the same statistics as the previous button but the scope will not be the whole trace but the time between cursors and the statistics will be shown on the right side of the plot. If the cursors are moved while the dialog is shown, then the statistics will be updated accordingly.
@@ -96,9 +116,9 @@ The top widget has some buttons as well:
   3. Make sure that the task is selected.
   4. Click on the ![Wakeup](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/wakeup30x30.png) button.
   5. Locate the wakeup event in the events view. It should be selected.
-  6. Double click on the `Info` field to display the backtrace.
+  6. Double click on the `Info` field to display the backtrace. Alternatively, you can use the ```Event->Show backtrace``` menu item.
   7. If the backtrace leads to an interrupt (including software interrupts), then the wakeup source has been found.
-  8. If the `sched_wakeup` event is executed as pid 0, that is no new task has been autoselected, and/or, the backtrace leads to something like this:
+  8. If the `sched_wakeup` event is executed as pid 0, that is no new task has been auto-selected, and/or, the backtrace leads to something like this:
      ```
      2863f8 ttwu_do_wakeup
      286522 ttwu_do_activate
@@ -119,21 +139,70 @@ The top widget has some buttons as well:
 * ![Filter on the current task](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/filtercurrent30x30.png) This will filter the events view so that only events involving the currently selected task will be displayed.
 * ![Filter on the current task time limited](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/filtercurrentlimited30x30.png) This will do the same as the previous, except that in addition it will exclude those events that are outside the interval defined by the positions of the cursors.
 
-### 1.1.3 The Events view
+### 1.1.4 The Events view
 
-At the bottom of the screen is the events view. The events view will be automatically scrolled when a cursor is moved. It is also possible to move the currently active cursor by clicking on a time in the events view. Another very important feature is that by double clicking on the info field, a dialog will open that displays the backtrace of that particular event.
+At the bottom of the screen is the events view. The events view will be automatically scrolled when a cursor is moved. It is also possible to move the currently active cursor by double clicking on a time in the events view. Another very important feature is that by double clicking on the info field, a dialog will open that displays the backtrace of that particular event. In general, it is  possible to trigger the actions in the ```Event``` menu by double clicking on the corresponding column of the currently selected event.
 
 # 2. Building traceshark
 
-The program can be built by doing something like this, assuming that you have
-Qt5 development packages installed:
+## 2.1 How to set up your build environment
+
+In order to build traceshark, you will need three things:
+* A C++ compiler
+* make
+* The development packages for Qt
+
+On Ubuntu and Debian (tested on Ubuntu 16.04, Ubuntu 18.04, Ubuntu 20.04, Debian 9, and Debian 10), you can install these like this:
 
 ```
-qmake-qt5 (or just qmake)
+sudo apt-get install qt5-default g++ make
+```
+
+On Fedora (tested with Fedora 32), you can do the following:
+
+```
+sudo dnf install qt5-qtbase-devel g++ make
+```
+
+It is not recommended but if you plan to configure your build to use the QCustomPlot library on your distro instead of the patched built-in version, then you will need to install the relevant development package. On Ubuntu 20.04 and Debian 10:
+
+```
+sudo apt-get install libqcustomplot-dev
+```
+
+The QCustomPlot library on Debian 9 and Ubuntu 18.04 is too old for traceshark.
+
+On Fedora 32:
+```
+sudo dnf install qcustomplot-qt5-devel
+```
+
+On macOS, you will need to:
+* Install Xcode and macports as described at [macports.org](https://www.macports.org)
+* Install the desired Qt version, for example Qt 5.13:
+```
+sudo port install qt513
+```
+* You need to find the directory where qmake is and add it to your path. Something like this:
+````
+echo 'export PATH=/opt/local/viktor/bin:$PATH:/opt/local/libexec/qt5/bin' >> $HOME/.zshrc
+````
+
+## 2.2 How to compile and install
+
+The program can be compiled and installed by doing something like this:
+
+```
+qmake-qt5 (on some distros you should use just qmake instead of qmake-qt5)
 make -j5
+sudo make install
 ```
 
-It is not necessary but you can customize your build by editing traceshark.pro. One of the most important options is that you can disable OpenGL support. If and only if OpenGL support is enabled, then it is possible for the user to select the line width of the scheduling graphs, otherwise the line width will always be set to 1. OpenGL is enabled at compile time by default. If it has been enabled at compile time, then it will be enabled by default when running the application but only if the screen is deemed to be a high resolution screen.  The user can enable or disable OpenGL at runtime by opening the dialog with the ![Select which types of graphs should be enabled](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/graphenabledialog30x30.png) button. If you run into rendering problems, including problems with very slow rendering, then disabling OpenGL might be worth trying. OpenGL can be disabled at compile time by uncommenting the following line in traceshark.pro:
+On macOS, the ```sudo make install``` doesn't work. You can find the executable in ```traceshark.app/Contents/MacOS/traceshark```. Running traceshark on macOS is currently in a quite experimental state.
+
+## 2.3 How to configure your build
+
+It is not necessary but you can tweak your build by editing traceshark.pro. One of the most important options is that you can disable OpenGL support. If and only if OpenGL support is enabled, then it is possible for the user to select the line width of the scheduling graphs, otherwise the line width will always be set to 1. OpenGL is enabled at compile time by default. If it has been enabled at compile time, then it will be enabled by default when running the application but only if the screen is deemed to be a high resolution screen.  The user can enable or disable OpenGL at runtime by opening the dialog with the ![Select which types of graphs should be enabled](https://raw.githubusercontent.com/cunctator/traceshark/608fdb55d78e7beebecf3a5e036cace07842f2c6/images/graphenabledialog30x30.png) button. If you run into rendering problems, including problems with very slow rendering, then disabling OpenGL might be worth trying. OpenGL can be disabled at compile time by uncommenting the following line in traceshark.pro:
 
 ```
 # DISABLE_OPENGL = yes
@@ -171,13 +240,19 @@ If you want to build a debug build, uncomment one of the following two lines:
 # USE_DEBUG_FLAG = -g -O0
 ```
 
+This is not recommended because it will very likely result in worse performance but if you absolutely want to use the QCustomPlot library on your system, then you need to uncomment the following line:
+
+```
+# USE_SYSTEM_QCUSTOMPLOT = yes
+```
+
 Please note that the software will compile for Qt 4 but that it has not been as
 tested with Qt 4. For that reason you might want to build with Qt 5, unless
 you happen to prefer Qt 4.
 
 # 3. Obtaining a trace
 
-There are two ways to capture a trace: Ftrace and perf. Perf is the recommended method because it is able to generate backtraces that are understood by traceshark. However, Ftrace has the benefit that it often works right out of the box on many distros. The same cannot be said of perf, which often requires some fiddling, especially if you want backtraces.
+There are two ways to capture a trace: Ftrace and perf. Perf is the recommended method because it is able to generate backtraces that are understood by traceshark. However, Ftrace has the benefit that it almost always works right out of the box on many distros. Nowadays, perf usually works right out of the box too but it was not always the case in the past.
 
 For both Ftrace and perf it is very desirable to avoid lost events because traceshark cannot visualize correctly with lost events, nor can it find a wakeup event that has been lost.
 
@@ -256,12 +331,13 @@ would probably be better off if you upgraded both the kernel and perf but
 upgrading the kernel isn't always possible.
 
 I am not exactly sure how recent perf/kernel is necessary but basically I
-believe that late 3.X and all 4.X kernels to date should work as long as the
-perf program has not been patched.
+believe that late 3.X and all 4.X and 5.x kernels to date should work as long
+as the perf program has not been patched.
 
 If you use the '-g' flag, you might also want to compile your own perf because
 in some distros perf is compiled without support for backtraces and it starts
-working when you compile perf with those bits enabled.
+working when you compile perf with those bits enabled. Fortunately, nowadays
+it's common that the perf utility shipped with the distro support backtraces.
 
 When you compile perf, you get a report like this:
 
@@ -291,14 +367,9 @@ Auto-detecting system features:
 I believe that for backtraces to work, it's desirable that as many as possible
 of those dwarf, bfd, elf, and unwind related options are enabled. They tend to
 get automatically enabled if you have the necessary development packages
-installed on your machine. Here is a list of development packages that you can
-try to install on Debian Stretch:
+installed on your machine.
 
+On Ubunut Bionic and Debian Buster/Bullseye the following might work:
 ```
-sudo apt-get install binutils-dev binutils-multiarch-dev bison elfutils flex libaudit-dev libbfd-dev libdw-dev libelf-dev libelf1 libgtk2.0-dev libiberty-dev liblzma-dev libnuma-dev libperl-dev libslang-dev libslang2 'libunwind*' libunwind8 python-dev
-```
-
-On Ubunut Bionic the following might work:
-```
-sudo apt-get install binutils-dev binutils-multiarch-dev bison elfutils flex libaudit-dev libbfd-dev libdw-dev libelf-dev libelf1 libgtk2.0-dev libiberty-dev liblzma-dev libnuma-dev libperl-dev libslang2-dev libslang2 'libunwind*' libunwind8 python-dev
+sudo apt-get install binutils-dev binutils-multiarch-dev bison elfutils flex libaudit-dev libbfd-dev libdw-dev libelf-dev libelf1 libgtk2.0-dev libiberty-dev liblzma-dev libnuma-dev libperl-dev libslang2-dev libslang2 'libunwind*' libunwind8 python-dev libzstd-dev libcap-dev
 ```

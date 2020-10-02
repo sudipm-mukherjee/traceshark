@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2018  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2018, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -53,19 +53,46 @@
 #ifndef VTL_COMPILER_H
 #define VTL_COMPILER_H
 
+extern "C" {
+#include <unistd.h>
+}
+
 #ifdef __has_cpp_attribute
-#define TS_HAS_CPP_ATTRIBUTE(x) __has_cpp_attribute(x)
+#define vtl_has_cpp_attribute(x) __has_cpp_attribute(x)
 #else
-#define TS_HAS_CPP_ATTRIBUTE(x) 0
+#define vtl_has_cpp_attribute(x) 0
 #endif
 
-#if TS_HAS_CPP_ATTRIBUTE(fallthrough)
+#ifdef __has_attribute
+#define vtl_has_attribute(x) __has_attribute(x)
+#else
+#define vtl_has_attribute(x) 0
+#endif
+
+#if vtl_has_cpp_attribute(fallthrough)
 #define ts_fallthrough [[fallthrough]]
-#elif TS_HAS_CPP_ATTRIBUTE(gnu::fallthrough)
+#elif vtl_has_cpp_attribute(gnu::fallthrough)
 #define ts_fallthrough [[gnu::fallthrough]]
 #else
 #define ts_fallthrough (void)0
 #endif
+
+#ifdef __always_inline
+#define vtl_always_inline __always_inline
+
+#elif defined(__inline__)
+#define vtl_always_inline __inline__
+
+#elif vtl_has_attribute(always_inline)
+#define vtl_always_inline __inline __attribute__((always_inline))
+
+#elif vtl_has_attribute(__always_inline__)
+#define vtl_always_inline __inline __attribute__((__always_inline__))
+
+#else
+#define vtl_always_inline __inline
+
+#endif /* #ifdef __always_inline  */
 
 #if defined(__GNUC__) || defined (__clang__)
 
@@ -87,6 +114,9 @@
 #define prefetch(addr) \
 	__builtin_prefetch(addr)
 
+#define attr_warn_unused_result \
+	__attribute__ ((warn_unused_result))
+
 #else /* __GNUC__ not defined */
 
 #define likely(x)   (x)
@@ -94,6 +124,8 @@
 #define prefetch_read(addr, locality)
 #define prefetch_write(addr, locality)
 #define prefetch(addr)
+
+#define attr_warn_unused_result
 
 #endif /* __GNUC__ */
 

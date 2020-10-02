@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -53,8 +53,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QHBoxLayout>
 #include <QMainWindow>
+#include <QMap>
 #include <QVector>
 #include <QString>
 #include "analyzer/traceanalyzer.h"
@@ -62,6 +62,28 @@
 #include "misc/traceshark.h"
 #include "parser/traceevent.h"
 #include "threads/workitem.h"
+#include "ui/eventsmodel.h"
+
+#ifdef CONFIG_SYSTEM_QCUSTOMPLOT
+	/*
+	 * Most distros probably build QCustomPlot without OpenGL suppport so we
+	 * provide the user with a reasonable guess.
+	 */
+#define qcp_warn_failed_opengl_enable()					\
+	vtl::warnx(							\
+"QCustomPlot failed to enable OpenGL. Perhaps the QCustomPlot library\n"\
+"on your system was compiled without QCUSTOMPLOT_USE_OPENGL.\n")
+#else
+	/*
+	 * In this case we are using the internal QCustomPlot so we have no idea
+	 * what the problem is.
+	 */
+#define qcp_warn_failed_opengl_enable() \
+	vtl::warnx("QCustomPlot failed to enable OpenGL.\n")
+#endif
+
+#define qcp_warn_failed_opengl_disable() \
+	vtl::warnx("QCustomPlot failed to disable OpenGL.\n")
 
 QT_BEGIN_NAMESPACE
 class QAction;
@@ -69,8 +91,9 @@ class QLabel;
 class QMenu;
 class QPlainTextEdit;
 class QMouseEvent;
+class QScrollBar;
 class QToolBar;
-template<class T, class U> class QMap;
+class QVBoxLayhout;
 QT_END_NAMESPACE
 
 class TraceAnalyzer;
@@ -106,6 +129,7 @@ public:
 	MainWindow();
 	virtual ~MainWindow();
 	void openFile(const QString &name);
+	void resizeEvent(QResizeEvent *event);
 protected:
 	void closeEvent(QCloseEvent *event);
 
@@ -118,12 +142,19 @@ private slots:
 	void license();
 	void mouseWheel();
 	void mousePress();
+	void yAxisSelectionChange(const QCPAxis::SelectableParts &parts);
+	void configureScrollBar();
+	void scrollBarChanged(int value);
+	void yAxisChanged(QCPRange range);
 	void plotDoubleClicked(QMouseEvent *event);
 	void infoValueChanged(vtl::Time value, int nr);
 	void moveActiveCursor(vtl::Time time);
-	void showEventInfo(const TraceEvent &event);
+	void moveCursor(vtl::Time time, int cursorIdx);
+	void handleEventDoubleClicked(EventsModel::column_t col,
+				      const TraceEvent &event);
 	void taskTriggered(int pid);
 	void handleEventSelected(const TraceEvent *event);
+	void handleEventChanged(bool selected);
 	void selectionChanged();
 	void legendDoubleClick(QCPLegend *legend, QCPAbstractLegendItem
 			       *abstractItem);
@@ -135,6 +166,8 @@ private slots:
 	void removeTaskGraph(int pid);
 	void cursorZoom();
 	void defaultZoom();
+	void fullZoom();
+	void verticalZoom();
 	void showTaskSelector();
 	void filterOnCPUs();
 	void showEventFilter();
@@ -170,6 +203,12 @@ private slots:
 	void clearTaskGraphsTriggered();
 	void taskFilterTriggered();
 	void taskFilterLimitedTriggered();
+	void showBackTraceTriggered();
+	void eventCPUTriggered();
+	void eventTypeTriggered();
+	void eventPIDTriggered();
+	void eventMoveBlueTriggered();
+	void eventMoveRedTriggered();
 
 private:
 	typedef enum : int {
@@ -189,8 +228,12 @@ private:
 	void createToolBars();
 	void createMenus();
 	void createTracePlot();
+	void createScrollBar();
 	void createStatusBar();
 	void createDialogs();
+	void createEventCPUFilter(const TraceEvent &event);
+	void createEventPIDFilter(const TraceEvent &event);
+	void createEventTypeFilter(const TraceEvent &event);
 	void plotConnections();
 	void widgetConnections();
 	void dialogConnections();
@@ -203,6 +246,9 @@ private:
 	void rescaleTrace();
 	void clearPlot();
 	void showTrace();
+	double adjustScatterSize(double defsize, int linewidth);
+	double maxZoomVSize();
+	double autoZoomVSize();
 	int loadTraceFile(const QString &);
 	void setStatus(status_t status, const QString *fileName = nullptr);
 
@@ -210,7 +256,7 @@ private:
 	void setupCursors();
 	void setupCursors(const double &red, const double &blue);
 	void setupCursors(const vtl::Time &redtime, const vtl::Time &bluetime);
-	void _setupCursors(vtl::Time redtime, const double &red,
+	void setupCursors_(vtl::Time redtime, const double &red,
 			   vtl::Time bluetime, const double &blue);
 	void updateResetFiltersEnabled();
 	void addSchedGraph(CPUTask &task, unsigned int cpu);
@@ -242,6 +288,7 @@ private:
 	void setTaskGraphRemovalActionEnabled(bool e);
 	void setTaskGraphClearActionEnabled(bool e);
 	void setAddToLegendActionEnabled(bool e);
+	void setEventActionsEnabled(bool e);
 	void setEventsWidgetEvents();
 	void scrollTo(const vtl::Time &time);
 	void handleLegendGraphDoubleClick(QCPGraph *legendGraph);
@@ -257,11 +304,13 @@ private:
 	TaskGraph *selectedGraph();
 
 	TracePlot *tracePlot;
+	QScrollBar *scrollBar;
+	bool scrollBarUpdate;
 	YAxisTicker *yaxisTicker;
 	TaskRangeAllocator *taskRangeAllocator;
 	QCPLayer *cursorLayer;
 	QWidget *plotWidget;
-	QVBoxLayout *plotLayout;
+	QHBoxLayout *plotLayout;
 	EventsWidget *eventsWidget;
 	InfoWidget *infoWidget;
 	QString traceFile;
@@ -270,6 +319,7 @@ private:
 	QMenu *viewMenu;
 	QMenu *helpMenu;
 	QMenu *taskMenu;
+	QMenu *eventMenu;
 
 	QToolBar *fileToolBar;
 	QToolBar *viewToolBar;
@@ -284,6 +334,8 @@ private:
 	QAction *exitAction;
 	QAction *cursorZoomAction;
 	QAction *defaultZoomAction;
+	QAction *fullZoomAction;
+	QAction *verticalZoomAction;
 	QAction *showTasksAction;
 	QAction *filterCPUsAction;
 	QAction *showEventsAction;
@@ -294,6 +346,14 @@ private:
 	QAction *exportCPUAction;
 	QAction *showStatsAction;
 	QAction *showStatsTimeLimitedAction;
+
+	QAction *backTraceAction;
+	QAction *eventCPUAction;
+	QAction *eventTypeAction;
+	QAction *eventPIDAction;
+	QAction *moveBlueAction;
+	QAction *moveRedAction;
+
 	QAction *aboutAction;
 	QAction *licenseAction;
 	QAction *aboutQtAction;
@@ -330,6 +390,8 @@ private:
 	static const double cpuSectionOffset;
 	static const double cpuSpacing;
 	static const double cpuHeight;
+	static const double pixelZoomFactor;
+	static const double refDpiY;
 	/*
 	 * const double migrateHeight doesn't exist. The value used is the
 	 * dynamically calculated inc variable in MainWindow::computeLayout()
@@ -344,10 +406,12 @@ private:
 	static const double RUNNING_SIZE;
 	static const double PREEMPTED_SIZE;
 	static const double UNINT_SIZE;
+	static const double CPUIDLE_SIZE;
 
 	static const QCPScatterStyle::ScatterShape RUNNING_SHAPE;
 	static const QCPScatterStyle::ScatterShape PREEMPTED_SHAPE;
 	static const QCPScatterStyle::ScatterShape UNINT_SHAPE;
+	static const QCPScatterStyle::ScatterShape CPUIDLE_SHAPE;
 
 	static const QColor RUNNING_COLOR;
 	static const QColor PREEMPTED_COLOR;
@@ -355,12 +419,17 @@ private:
 
 	double bottom;
 	double top;
+	double startTime;
+	double endTime;
 	QVector<double> ticks;
 	QVector<QString> tickLabels;
 	Cursor *cursors[TShark::NR_CURSORS];
 	SettingStore *settingStore;
 	bool filterActive;
 	double cursorPos[TShark::NR_CURSORS];
+	QMap<unsigned, unsigned> eventCPUMap;
+	QMap<int, int> eventPIDMap;
+	QMap<event_t, event_t> eventTypeMap;
 };
 
 #endif /* MAINWINDOW_H */

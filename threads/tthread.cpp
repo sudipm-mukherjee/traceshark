@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2018  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015, 2016, 2018, 2020
+ *  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -50,38 +51,37 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* Let's piggy back on QThread. This will make TThread a mere container which
- * through a pointer isolates us from having to intherit QObject in our thread
- * classes */
 #include <QList>
 #include <QMap>
 #include <QThread>
 #include "threads/tthread.h"
+#include "misc/osapi.h"
 
-extern "C" {
-#include <sys/prctl.h>
-}
+/*
+ * Let's piggy back on QThread. This will make TThread a mere container which
+ * through a pointer isolates us from having to intherit QObject in our thread
+ * classes.
+ */
 
-__TThread::__TThread(TThread *thr, const QString &name):
+TThread_::TThread_(TThread *thr, const QString &name):
 	tThread(thr), threadName(name) {}
 
-void __TThread::run()
+void TThread_::run()
 {
-	prctl(PR_SET_NAME, (unsigned long) threadName.toLocal8Bit().data(), 0,
-	      0, 0);
+	tshark_pthread_setname_np(threadName.toLocal8Bit().data());
 	tThread->run();
 }
 
 TThread::TThread()
 {
 	const QString name("TThread");
-	threadPtr = new __TThread(this, name);
+	threadPtr = new TThread_(this, name);
 	threadMap[threadPtr] = threadPtr;
 }
 
 TThread::TThread(const QString &name)
 {
-	threadPtr = new __TThread(this, name);
+	threadPtr = new TThread_(this, name);
 	threadMap[threadPtr] = threadPtr;
 }
 
@@ -155,9 +155,9 @@ void TThread::quit()
 
 void TThread::listThreads(QList<QThread*> &list)
 {
-	QMap<__TThread*, __TThread*>::iterator iter;
+	QMap<TThread_*, TThread_*>::iterator iter;
 	for (iter = threadMap.begin(); iter != threadMap.end(); iter++)
 		list.append(static_cast<QThread*>(iter.value()));
 }
 
-QMap<__TThread*, __TThread*> TThread::threadMap;
+QMap<TThread_*, TThread_*> TThread::threadMap;

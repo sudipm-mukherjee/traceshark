@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2018  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015, 2016, 2018, 2020
+ * Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -54,21 +55,31 @@
 #define TSTRING_H
 
 #include <cstring>
+#include "vtl/compiler.h"
 
 class TString {
 public:
 	char *ptr;
 	int len;
-	static __always_inline int cmp(const TString *a, const TString *b);
-	static __always_inline int strcmp(const TString *a, const TString *b);
-	static __always_inline int strcmp(const TString *a, const TString *b,
+	static vtl_always_inline int cmp(const TString *a, const TString *b);
+	static vtl_always_inline int strcmp(const TString *a, const TString *b);
+	static vtl_always_inline int strcmp(const TString *a, const TString *b,
 					  short skip,
 					  short *neq);
-	__always_inline bool merge(const TString *s, int maxlen);
-	__always_inline bool set(const TString *s, int maxlen);
+	vtl_always_inline bool merge(const TString *s, int maxlen)
+		attr_warn_unused_result;
+	vtl_always_inline bool set(const TString *s, int maxlen);
+private:
+	vtl_always_inline int TSTRING_MIN(int a, int b);
 };
 
-__always_inline int TString::cmp(const TString *a, const TString *b) {
+int TString::TSTRING_MIN(int a, int b)
+{
+	return ((a) < (b) ? a:b);
+}
+
+vtl_always_inline int TString::cmp(const TString *a, const TString *b)
+{
 	int clen;
 	int rval;
 	int diff;
@@ -82,8 +93,8 @@ __always_inline int TString::cmp(const TString *a, const TString *b) {
 		return rval;
 }
 
-__always_inline int TString::strcmp(const TString *a, const TString *b,
-				    short skip, short *eqn)
+vtl_always_inline int TString::strcmp(const TString *a, const TString *b,
+				       short skip, short *eqn)
 {
 	int rval = (int) a->len - (int)  b->len;
 	int cval;
@@ -103,7 +114,7 @@ __always_inline int TString::strcmp(const TString *a, const TString *b,
 }
 
 /* This seems to be the fastest now, at least for stringpool */
-__always_inline int TString::strcmp(const TString *a, const TString *b)
+vtl_always_inline int TString::strcmp(const TString *a, const TString *b)
 {
 	int rval = (int) a->len - (int)  b->len;
 	int cval;
@@ -120,7 +131,7 @@ __always_inline int TString::strcmp(const TString *a, const TString *b)
 	return rval;
 }
 
-__always_inline bool TString::merge(const TString *s, int maxlen)
+vtl_always_inline bool TString::merge(const TString *s, int maxlen)
 {
 	int newlen;
 
@@ -134,14 +145,12 @@ __always_inline bool TString::merge(const TString *s, int maxlen)
 	return true;
 }
 
-__always_inline bool TString::set(const TString *s, int maxlen)
+vtl_always_inline bool TString::set(const TString *s, int maxlen)
 {
-	if (s->len > maxlen)
-		return false;
-	strncpy(ptr, s->ptr, s->len);
-	len = s->len;
+	len = TSTRING_MIN(s->len, maxlen);
+	strncpy(ptr, s->ptr, len);
 	ptr[len] = '\0';
-	return true;
+	return (len <= maxlen);
 }
 
 #endif

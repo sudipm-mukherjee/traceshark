@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 #
 #  Traceshark - a visualizer for visualizing ftrace and perf traces
-#  Copyright (C) 2014-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+#  Copyright (C) 2014-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
 #
 # This file is dual licensed: you can use it either under the terms of
 # the GPL, or the BSD license, at your option.
@@ -241,11 +241,31 @@
 # These may be edited by the user in order to configure the build
 #
 
+# Uncomment the line below to customize the installation root directory. The
+# default is /usr
+# CUSTOM_INSTALL_PREFIX = /usr/local
+
 # Uncomment this to disable the usage of OpenGL rendering. If you disable this,
 # the line width of the scheduling graphs will always be 1 pixel. You should
 # disable this if your computer is not OpenGL capable, or if you are happy to
 # always have the scheduling graphs drawn with a width of 1.
 # DISABLE_OPENGL = yes
+
+# Uncomment this to use the libqcustomplot of your system. At the time of
+# writing, this is a bad idea. Only do this if you know exactly what you are
+# doing. traceshark has its own QCustomPlot, which contains important
+# performance fixes that are unlikely to be in the system libqcustomplot.
+# On the other hand, if you do not care about performance and have at least one
+# other application that uses libqcustomplot and you want to save about 1.3 MB
+# of disk space, then this is for you. If libqcustomplot was compiled without
+# OpenGL support, then you probably want to disable OpenGL above as well.
+# USE_SYSTEM_QCUSTOMPLOT = yes
+
+# If you have uncommented the previous, you can uncomment this to customize
+# the flag for linking with libqcustomplot. It defaults to -lqcustomplot.
+# Make sure that you compile traceshark with the same Qt version as your
+# libqcustomplot. Currently it is better to use Qt 5.
+# USE_CUSTOM_QCUSTOMPLOT_FLAG = -lqcustomplot-qt5
 
 # Uncomment this for debug symbols
 # USE_DEBUG_FLAG = -g
@@ -263,8 +283,8 @@
 
 # If you want to compile with another compiler than the defaul g++, then
 # uncomment and change to the compiler of your choice
-# USE_ALTERNATIVE_COMPILER = clang++-6.0
-# USE_ALTERNATIVE_COMPILER = g++-8
+# USE_ALTERNATIVE_COMPILER = clang++-10
+# USE_ALTERNATIVE_COMPILER = g++-10
 
 # These optimization options do not seem to help, so leave them commented out.
 # Only play with these if you are interested in playing with obscure compiler
@@ -284,10 +304,12 @@
 # Header files
 #
 
+!equals(USE_SYSTEM_QCUSTOMPLOT, yes) {
 HEADERS       = qcustomplot/qcustomplot.h
 HEADERS      += qcustomplot/qcppointer.h
 HEADERS      += qcustomplot/qcppointer_impl.h
 HEADERS      += qcustomplot/qcplist.h
+}
 
 HEADERS      +=  ui/abstracttaskmodel.h
 HEADERS      +=  ui/cpuselectdialog.h
@@ -306,6 +328,7 @@ HEADERS      +=  ui/licensedialog.h
 HEADERS      +=  ui/mainwindow.h
 HEADERS      +=  ui/migrationarrow.h
 HEADERS      +=  ui/migrationline.h
+HEADERS      +=  ui/qcustomplot.h
 HEADERS      +=  ui/statslimitedmodel.h
 HEADERS      +=  ui/statsmodel.h
 HEADERS      +=  ui/tableview.h
@@ -361,10 +384,14 @@ HEADERS      +=  mm/stringtree.h
 
 HEADERS      +=  misc/chunk.h
 HEADERS      +=  misc/errors.h
+HEADERS      +=  misc/maplist.h
+HEADERS      +=  misc/osapi.h
+HEADERS      +=  misc/pngresources.h
 HEADERS      +=  misc/resources.h
 HEADERS      +=  misc/setting.h
 HEADERS      +=  misc/settingstore.h
 HEADERS      +=  misc/string.h
+HEADERS      +=  misc/svgresources.h
 HEADERS      +=  misc/traceshark.h
 HEADERS      +=  misc/translate.h
 HEADERS      +=  misc/tstring.h
@@ -383,7 +410,9 @@ HEADERS      +=  vtl/time.h
 # Source files
 #
 
+!equals(USE_SYSTEM_QCUSTOMPLOT, yes) {
 SOURCES       = qcustomplot/qcustomplot.cpp
+}
 
 SOURCES      +=  ui/abstracttaskmodel.cpp
 SOURCES      +=  ui/cpuselectdialog.cpp
@@ -494,6 +523,18 @@ equals(USE_HARDENING_CXXFLAGS, yes) {
 OUR_FLAGS += $${HARDENING_CXXFLAGS}
 }
 
+equals(USE_SYSTEM_QCUSTOMPLOT, yes) {
+
+isEmpty(USE_CUSTOM_QCUSTOMPLOT_FLAG) {
+QCUSTOM_FLAG = -lqcustomplot
+} else {
+QCUSTOM_FLAG = $${USE_CUSTOM_QCUSTOMPLOT_FLAG}
+}
+
+OUR_FLAGS += -DCONFIG_SYSTEM_QCUSTOMPLOT
+LIBS += -lqcustomplot
+}
+
 OUR_NORMAL_CXXFLAGS = -pedantic -Wall -std=c++11
 OUR_NORMAL_CFLAGS = -pedantic -Wall -std=c11
 
@@ -512,10 +553,18 @@ QMAKE_LINK = $${USE_ALTERNATIVE_COMPILER}
 
 OUR_POSIX_DEFINES = _FILE_OFFSET_BITS=64 _POSIX_C_SOURCE=200809L
 
+mac {
+OUR_POSIX_DEFINES += _DARWIN_C_SOURCE
+}
+
 # Compute the defines to be set with -D flag at the compiler command line
 DEFINES += $${OUR_POSIX_DEFINES}
 !equals(DISABLE_OPENGL, yes) {
+equals(QT_MAJOR_VERSION, 4) {
+DEFINES += TRACESHARK_QT4_OPENGL
+} else {
 DEFINES += QCUSTOMPLOT_USE_OPENGL
+}
 }
 
 ###############################################################################
@@ -535,3 +584,23 @@ QT           += opengl
 #
 
 RESOURCES     = traceshark.qrc
+
+
+###############################################################################
+# Installation
+#
+
+isEmpty (CUSTOM_INSTALL_PREFIX) {
+INSTALL_PREFIX = /usr
+} else {
+INSTALL_PREFIX = $${CUSTOM_INSTALL_PREFIX}
+}
+
+documentation.path = $${INSTALL_PREFIX}/share/man/man1
+documentation.files = doc/traceshark.1
+
+target.path = $${INSTALL_PREFIX}/bin
+target.files = traceshark
+
+INSTALLS += documentation
+INSTALLS += target

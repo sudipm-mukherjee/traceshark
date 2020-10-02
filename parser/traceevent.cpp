@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2017, 2019
+ * Copyright (C) 2015, 2016, 2017, 2019, 2020
  * Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
@@ -98,6 +98,19 @@ const StringTree<> *TraceEvent::getStringTree()
 const TString *TraceEvent::getEventName() const
 {
 	return stringTree->stringLookup(TraceEvent::type);
+}
+
+void TraceEvent::clear()
+{
+	taskName = nullptr;
+	pid = 0;
+	cpu = 0;
+	time = VTL_TIME_ZERO;
+	intArg = 0;
+	type = EVENT_ERROR;
+	argv = nullptr;
+	argc = 0;
+	postEventInfo = nullptr;
 }
 
 const TString *TraceEvent::getEventName(event_t event)
