@@ -1,6 +1,6 @@
-From 85ec72f3f29dd0fd66b26dcada1b3835eb7f4df5 Mon Sep 17 00:00:00 2001
+From 73a932e17756ee36ec1cd2ce85216014683ba6e0 Mon Sep 17 00:00:00 2001
 From: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
-Date: Sat, 22 Feb 2020 23:25:47 +0000
+Date: Sat, 3 Oct 2020 20:24:24 +0100
 Subject: [PATCH] Use libqcustomplot from system
 
 Signed-off-by: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
@@ -9,18 +9,18 @@ Signed-off-by: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/traceshark.pro b/traceshark.pro
-index e594b60..58d69be 100644
+index 154a3e7..e542157 100644
 --- a/traceshark.pro
 +++ b/traceshark.pro
-@@ -255,7 +255,7 @@
+@@ -259,7 +259,7 @@
  # other application that uses libqcustomplot and you want to save about 1.3 MB
  # of disk space, then this is for you. If libqcustomplot was compiled without
  # OpenGL support, then you probably want to disable OpenGL above as well.
 -# USE_SYSTEM_QCUSTOMPLOT = yes
 +USE_SYSTEM_QCUSTOMPLOT = yes
  
- # Uncomment this for debug symbols
- # USE_DEBUG_FLAG = -g
+ # If you have uncommented the previous, you can uncomment this to customize
+ # the flag for linking with libqcustomplot. It defaults to -lqcustomplot.
 -- 
-2.25.1
+2.20.1
 
