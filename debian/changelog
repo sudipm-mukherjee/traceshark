@@ -1,3 +1,11 @@
+traceshark (0.9.11~beta-1) unstable; urgency=medium
+
+  * New upstream version 0.9.11-beta.
+    - Remove patches applied upstream.
+    - Refresh patch with new release.
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Mon, 12 Oct 2020 21:55:31 +0100
+
 traceshark (0.9.9~beta-3) unstable; urgency=medium
 
   * Update to compat level 13.
