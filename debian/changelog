@@ -1,3 +1,9 @@
+traceshark (0.9.11~beta-2) unstable; urgency=medium
+
+  * Add autopkgtest.
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Tue, 20 Oct 2020 13:21:35 +0100
+
 traceshark (0.9.11~beta-1) unstable; urgency=medium
 
   * New upstream version 0.9.11-beta.
