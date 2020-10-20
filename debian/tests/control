@@ -1,0 +1,3 @@
+Tests: test-gui
+Depends: @, xvfb, xauth, xdotool
+Restrictions: superficial

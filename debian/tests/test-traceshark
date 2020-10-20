@@ -1,0 +1,16 @@
+#!/bin/sh
+
+/usr/bin/traceshark &
+pid=$!
+win=`xdotool search --sync --onlyvisible --pid $pid`
+echo "win=$win"
+name=`xdotool getwindowname $win`
+kill -9 $pid
+echo "name=$name"
+if [ $name = "Traceshark" ]; then
+echo "Test OK"
+return 0
+else
+echo "Test Failed"
+return 1
+fi
