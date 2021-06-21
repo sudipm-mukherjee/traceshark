@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 #
 #  Traceshark - a visualizer for visualizing ftrace and perf traces
-#  Copyright (C) 2014-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+#  Copyright (C) 2014-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
 #
 # This file is dual licensed: you can use it either under the terms of
 # the GPL, or the BSD license, at your option.
@@ -114,6 +114,14 @@
 
 ### x86-64 Section
 
+# Generic 64-bit x86
+# MARCH_FLAG = -march=x86-64
+# MTUNE_FLAG = -mtune=x86-64
+
+# Generic 64-bit x86
+# MARCH_FLAG = -march=x86-64
+# MTUNE_FLAG = -mtune=generic
+
 ### AMD
 
 # Athlon 64
@@ -148,6 +156,10 @@
 # MARCH_FLAG = -march=znver1
 # MTUNE_FLAG = -mtune=znver1
 
+# Zen v2
+# MARCH_FLAG = -march=znver2
+# MTUNE_FLAG = -mtune=znver2
+
 # Bobcat v1
 # MARCH_FLAG = -march=btver1
 # MTUNE_FLAG = -mtune=btver1
@@ -157,6 +169,10 @@
 # MTUNE_FLAG = -mtune=btver2
 
 ### Intel
+
+# Generic Intel
+# MARCH_FLAG = -march=x86-64
+# MTUNE_FLAG = -mtune=intel
 
 # Cocona
 # MARCH_FLAG = -march=nocona
@@ -202,6 +218,18 @@
 # MARCH_FLAG = -march=silvermont
 # MTUNE_FLAG = -mtune=silvermont
 
+# Goldmont
+# MARCH_FLAG = -march=goldmont
+# MTUNE_FLAG = -mtune=goldmont
+
+# Goldmont Plus
+# MARCH_FLAG = -march=goldmont-plus
+# MTUNE_FLAG = -mtune=goldmont-plus
+
+# Tremont
+# MARCH_FLAG = -march=tremont
+# MTUNE_FLAG = -mtune=tremont
+
 # KNL
 # MARCH_FLAG = -march=knl
 # MTUNE_FLAG = -mtune=knl
@@ -221,6 +249,26 @@
 # Icelake
 # MARCH_FLAG = -march=icelake
 # MTUNE_FLAG = -mtune=icelake
+
+# Icelake Client
+# MARCH_FLAG = -march=icelake-client
+# MTUNE_FLAG = -mtune=icelake-client
+
+# Icelake Server
+# MARCH_FLAG = -march=icelake-server
+# MTUNE_FLAG = -mtune=icelake-server
+
+# Cascadelake
+# MARCH_FLAG = -march=cascadelake
+# MTUNE_FLAG = -mtune=cascadelake
+
+# Cooperlake
+# MARCH_FLAG = -march=cooperlake
+# MTUNE_FLAG = -mtune=cooperlake
+
+# Tigerlake
+# MARCH_FLAG = -march=tigerlake
+# MTUNE_FLAG = -mtune=tigerlake
 
 ### Raspberry PI section
 
@@ -329,6 +377,8 @@ HEADERS      +=  ui/mainwindow.h
 HEADERS      +=  ui/migrationarrow.h
 HEADERS      +=  ui/migrationline.h
 HEADERS      +=  ui/qcustomplot.h
+HEADERS      +=  ui/regexdialog.h
+HEADERS      +=  ui/regexwidget.h
 HEADERS      +=  ui/statslimitedmodel.h
 HEADERS      +=  ui/statsmodel.h
 HEADERS      +=  ui/tableview.h
@@ -349,6 +399,7 @@ HEADERS      +=  analyzer/cpuidle.h
 HEADERS      +=  analyzer/cputask.h
 HEADERS      +=  analyzer/filterstate.h
 HEADERS      +=  analyzer/migration.h
+HEADERS      +=  analyzer/regexfilter.h
 HEADERS      +=  analyzer/task.h
 HEADERS      +=  analyzer/tcolor.h
 HEADERS      +=  analyzer/traceanalyzer.h
@@ -431,6 +482,8 @@ SOURCES      +=  ui/licensedialog.cpp
 SOURCES      +=  ui/mainwindow.cpp
 SOURCES      +=  ui/migrationarrow.cpp
 SOURCES      +=  ui/migrationline.cpp
+SOURCES      +=  ui/regexdialog.cpp
+SOURCES      +=  ui/regexwidget.cpp
 SOURCES      +=  ui/statslimitedmodel.cpp
 SOURCES      +=  ui/statsmodel.cpp
 SOURCES      +=  ui/tableview.cpp
@@ -450,6 +503,7 @@ SOURCES      +=  analyzer/cpufreq.cpp
 SOURCES      +=  analyzer/cpuidle.cpp
 SOURCES      +=  analyzer/cputask.cpp
 SOURCES      +=  analyzer/filterstate.cpp
+SOURCES      +=  analyzer/regexfilter.cpp
 SOURCES      +=  analyzer/task.cpp
 SOURCES      +=  analyzer/tcolor.cpp
 SOURCES      +=  analyzer/traceanalyzer.cpp
@@ -477,6 +531,7 @@ SOURCES      +=  misc/errors.cpp
 SOURCES      +=  misc/main.cpp
 SOURCES      +=  misc/setting.cpp
 SOURCES      +=  misc/settingstore.cpp
+SOURCES      +=  misc/traceshark.cpp
 
 SOURCES      +=  misc/translate.cpp
 

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2017, 2019-2021
- * Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2020, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -51,58 +50,53 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "parser/traceevent.h"
-#include "misc/types.h"
-#include "mm/stringtree.h"
+#ifndef REGEXDIALOG_H
+#define REGEXDIALOG_H
 
-/* TSHARK_ITEM_ is used by the TRACEEVENT_DEFS_ macro */
-#undef TSHARK_ITEM_
-#define TSHARK_ITEM_(A, B) B
-/*
- * The maximum length of these strings should be in the macro
- * EVENTSTRINGS_MAXLEN, which is defined misc/types.h
- */
-const char * const eventstrings[] = {
-	TRACEEVENTS_DEFS_
+#include <QDialog>
+#include <QLinkedList>
+
+#include "vtl/error.h"
+#include "analyzer/regexfilter.h"
+
+QT_BEGIN_NAMESPACE
+class QComboBox;
+class QVBoxLayout;
+class QTextEdit;
+template <typename T, typename U> class QMap;
+QT_END_NAMESPACE
+
+class ValueBox;
+class RegexWidget;
+
+class RegexDialog : public QDialog {
+	Q_OBJECT
+
+public:
+	RegexDialog(QWidget *parent = 0);
+	~RegexDialog();
+private:
+	int savedHeight;
+	QComboBox *logicBox;
+	QVBoxLayout *layout;
+	QLinkedList<RegexWidget *> regexWidgets;
+
+	void addRegexWidget(RegexWidget *after = nullptr);
+        QLinkedList<RegexWidget *>::iterator find(RegexWidget *widget);
+	QLinkedList<RegexWidget *>::iterator findAfter(RegexWidget *widget);
+	RegexFilter filter;
+public slots:
+	void show();
+signals:
+	void resetFilter(void);
+	void createFilter(RegexFilter &filter, bool orlogic);
+private slots:
+	void okClicked();
+	void closeClicked();
+	void addFilterClicked();
+	void resetClicked();
+	void removeRegexWidget(RegexWidget *widget);
+	void addRegexWidgetAfter(RegexWidget *widget);
 };
-#undef TSHARK_ITEM_
 
-StringTree<> *TraceEvent::stringTree = nullptr;
-
-void TraceEvent::setStringTree(StringTree<> *sTree)
-{
-	stringTree = sTree;
-}
-
-const StringTree<> *TraceEvent::getStringTree()
-{
-	return stringTree;
-}
-
-const TString *TraceEvent::getEventName() const
-{
-	return stringTree->stringLookup(TraceEvent::type);
-}
-
-void TraceEvent::clear()
-{
-	taskName = nullptr;
-	pid = 0;
-	cpu = 0;
-	time = VTL_TIME_ZERO;
-	intArg = 0;
-	type = EVENT_ERROR;
-	argv = nullptr;
-	argc = 0;
-	postEventInfo = nullptr;
-}
-
-const TString *TraceEvent::getEventName(event_t event)
-{
-	return stringTree->stringLookup(event);
-}
-
-int TraceEvent::getNrEvents()
-{
-	return stringTree->getMaxEvent() + 1;
-}
+#endif /* _REGEXDIALOG_H */

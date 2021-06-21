@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -90,6 +90,7 @@ class QAction;
 class QLabel;
 class QMenu;
 class QPlainTextEdit;
+class QMessageBox;
 class QMouseEvent;
 class QScrollBar;
 class QToolBar;
@@ -111,6 +112,8 @@ class QCPLayer;
 class QCPLegend;
 class QCustomPlot;
 class QCPAbstractLegendItem;
+class RegexDialog;
+class RegexFilter;
 class SettingStore;
 class TaskToolBar;
 class TracePlot;
@@ -170,6 +173,7 @@ private slots:
 	void verticalZoom();
 	void showTaskSelector();
 	void filterOnCPUs();
+	void showArgFilter();
 	void showEventFilter();
 	void showGraphEnable();
 	void showWakeupOrWaking(int pid, event_t wakevent);
@@ -178,15 +182,20 @@ private slots:
 			     bool orlogic, bool inclusive);
 	void createCPUFilter(QMap<unsigned, unsigned> &map, bool orlogic);
 	void createEventFilter(QMap<event_t, event_t> &map, bool orlogic);
+	void createRegexFilter(RegexFilter &regexFilter, bool orlogic);
 	void resetPidFilter();
 	void resetCPUFilter();
 	void resetEventFilter();
+	void resetRegexFilter();
 	void resetFilters();
 	void timeFilter();
 	void exportEvents(TraceAnalyzer::exporttype_t export_type);
 	void exportEventsTriggered();
 	void exportCPUTriggered();
 	void consumeSettings();
+	void consumeFilterSettings();
+	void consumeSizeChange();
+	void transmitSize();
 	void showStats();
 	void showStatsTimeLimited();
 	void removeQDockWidget(QDockWidget *widget);
@@ -224,6 +233,8 @@ private:
 	} preference_t;
 
 	/* Helper functions for the constructor */
+	void createAboutBox();
+	void createAboutQCustomPlot();
 	void createActions();
 	void createToolBars();
 	void createMenus();
@@ -279,6 +290,7 @@ private:
 	void addStillRunningTaskGraph(Task *task);
 	void addPreemptedTaskGraph(Task *task);
 	void addUninterruptibleTaskGraph(Task *task);
+	void resetFilter(FilterState::filter_t filter);
 	void setTraceActionsEnabled(bool e);
 	void setLegendActionsEnabled(bool e);
 	void setCloseActionsEnabled(bool e);
@@ -339,6 +351,7 @@ private:
 	QAction *showTasksAction;
 	QAction *filterCPUsAction;
 	QAction *showEventsAction;
+	QAction *showArgFilterAction;
 	QAction *timeFilterAction;
 	QAction *graphEnableAction;
 	QAction *resetFiltersAction;
@@ -382,6 +395,7 @@ private:
 	EventSelectDialog *eventSelectDialog;
 	CPUSelectDialog *cpuSelectDialog;
 	GraphEnableDialog *graphEnableDialog;
+	RegexDialog *regexDialog;
 
 	static const double bugWorkAroundOffset;
 	static const double schedSectionOffset;
@@ -430,6 +444,8 @@ private:
 	QMap<unsigned, unsigned> eventCPUMap;
 	QMap<int, int> eventPIDMap;
 	QMap<event_t, event_t> eventTypeMap;
+	QMessageBox *aboutBox;
+	QMessageBox *aboutQCPBox;
 };
 
 #endif /* MAINWINDOW_H */

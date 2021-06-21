@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2019, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2019-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -67,6 +67,8 @@ public:
 	void setBoolValue(enum Setting::Index idx, bool v);
 	void setIntValue(enum Setting::Index idx, int v);
 	void setValue(enum Setting::Index idx, const Setting::Value &v);
+	void updateDependents(enum Setting::Index idx);
+	void checkAllDependents();
 	const Setting::Value &getValue(enum Setting::Index idx) const;
 	const Setting::Value &getDisabledValue(enum Setting::Index idx) const;
 	const Setting::Value &getMinValue(enum Setting::Index idx) const;

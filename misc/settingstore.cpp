@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2019, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2019-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -62,10 +62,6 @@
 
 const int SettingStore::this_version = 1;
 
-//Setting Setting::settings[Setting::NR_SETTINGS];
-
-//QMap<QString, enum Setting::Index> Setting::fileKeyMap;
-
 SettingStore::SettingStore()
 {
 	QObject q;
@@ -74,6 +70,7 @@ SettingStore::SettingStore()
 	Setting::Dependency unlimitedDep(Setting::SHOW_MIGRATION_GRAPHS, true);
 	Setting::Dependency openglDep(Setting::OPENGL_ENABLED, true);
 	Setting::Dependency vertwakeDep(Setting::VERTICAL_WAKEUP, true);
+	Setting::Dependency loadsizeDep(Setting::LOAD_WINDOW_SIZE_START, true);
 
 	setName(Setting::SHOW_SCHED_GRAPHS, q.tr("Show scheduling graphs"));
 	setKey(Setting::SHOW_SCHED_GRAPHS, QString("SHOW_SCHED_GRAPHS"));
@@ -177,11 +174,50 @@ SettingStore::SettingStore()
 	initDisabledIntValue(Setting::MIGRATION_WIDTH, DEFAULT_MIGRATION_WIDTH);
 	addDependency(Setting::MIGRATION_WIDTH, openglDep);
 
+	setName(Setting::LOAD_WINDOW_SIZE_START,
+		q.tr("Restore the size of the main window at startup"));
+	setKey(Setting::LOAD_WINDOW_SIZE_START,
+	       QString("LOAD_WINDOW_SIZE_START"));
+	initBoolValue(Setting::LOAD_WINDOW_SIZE_START, false);
+
+	setName(Setting::MAINWINDOW_WIDTH, q.tr("Width of the main window"));
+	setUnit(Setting::MAINWINDOW_WIDTH, q.tr("pixels"));
+	setKey(Setting::MAINWINDOW_WIDTH, QString("MAINWINDOW_WIDTH"));
+	initIntValue(Setting::MAINWINDOW_WIDTH, DEFAULT_MAINWINDOW_WIDTH);
+	initMaxIntValue(Setting::MAINWINDOW_WIDTH, MAX_MAINWINDOW_WIDTH);
+	initMinIntValue(Setting::MAINWINDOW_WIDTH, MIN_MAINWINDOW_WIDTH);
+	initDisabledIntValue(Setting::MAINWINDOW_WIDTH,
+			     DEFAULT_MAINWINDOW_WIDTH);
+	addDependency(Setting::MAINWINDOW_WIDTH, loadsizeDep);
+
+	setName(Setting::MAINWINDOW_HEIGHT, q.tr("Height of the main window"));
+	setUnit(Setting::MAINWINDOW_HEIGHT, q.tr("pixels"));
+	setKey(Setting::MAINWINDOW_HEIGHT, QString("MAINWINDOW_HEIGHT"));
+	initIntValue(Setting::MAINWINDOW_HEIGHT, DEFAULT_MAINWINDOW_HEIGHT);
+	initMaxIntValue(Setting::MAINWINDOW_HEIGHT, MAX_MAINWINDOW_HEIGHT);
+	initMinIntValue(Setting::MAINWINDOW_HEIGHT, MIN_MAINWINDOW_HEIGHT);
+	initDisabledIntValue(Setting::MAINWINDOW_HEIGHT,
+			     DEFAULT_MAINWINDOW_HEIGHT);
+	addDependency(Setting::MAINWINDOW_HEIGHT, loadsizeDep);
+
+	setName(Setting::SAVE_WINDOW_SIZE_EXIT,
+		q.tr("Save the size of the main window at exit"));
+	setKey(Setting::SAVE_WINDOW_SIZE_EXIT,
+	       QString("SAVE_WINDOW_SIZE_EXIT"));
+	initBoolValue(Setting::SAVE_WINDOW_SIZE_EXIT, false);
+
 	setName(Setting::EVENT_PID_FLT_INCL_ON,
 		q.tr("Event pid filtering: include relevant wakeup, fork and scheduling events from other PIDs"));
 	setKey(Setting::EVENT_PID_FLT_INCL_ON,
 	       QString("EVENT_PID_FLT_INCL_ON"));
 	initBoolValue(Setting::EVENT_PID_FLT_INCL_ON, false);
+
+	/*
+	 * The values that we have initialized above with initIntValue() and
+	 * initBoolValue() are not expected to break dependencies but let's
+	 * check anyway.
+	 */
+	checkAllDependents();
 }
 
 void SettingStore::setName(enum Setting::Index idx, const QString &n)
@@ -335,6 +371,31 @@ void SettingStore::addDependency(enum Setting::Index idx,
 		return;
 	settings[d.index_].dependent[*nrDependents] = dy;
 	(*nrDependents)++;
+}
+
+void SettingStore::updateDependents(enum Setting::Index idx)
+{
+	unsigned i;
+	const Setting &setting = settings[idx];
+
+	for (i = 0; i < setting.nrDependents; i++) {
+		const Setting::Dependency &d = setting.dependent[i];
+		if (d.desired_value != setting.value) {
+			settings[d.index_].value =
+				settings[d.index_].disabled_value;
+		}
+	}
+}
+
+void SettingStore::checkAllDependents()
+{
+	int i;
+	enum Setting::Index idx;
+
+	for (i = 0; i < Setting::NR_SETTINGS; i++) {
+		idx = (enum Setting::Index) i;
+		updateDependents(idx);
+	}
 }
 
 unsigned int SettingStore::getNrDependencies(enum Setting::Index idx) const
@@ -495,6 +556,12 @@ int SettingStore::loadSettings()
 	}
 	if (version < this_version)
 		rval = handleOlderVersion(version, this_version);
+	/*
+	 * Let's check that we have not loaded values that break dependencies.
+	 * This could happend if the user had manually edited the .traceshark
+	 * file.
+	 */
+	checkAllDependents();
 	return rval;
 }
 

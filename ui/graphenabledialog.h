@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2018, 2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2018, 2019, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -59,6 +59,8 @@
 
 QT_BEGIN_NAMESPACE
 class QComboBox;
+class QMainWindow;
+class QPushButton;
 class QTextEdit;
 template <typename T, typename U> class QMap;
 QT_END_NAMESPACE
@@ -72,17 +74,27 @@ public:
 	GraphEnableDialog(SettingStore *sstore, QWidget *parent = 0);
 	~GraphEnableDialog();
 	void checkConsumption();
+	void setMainWindowSize(int wt, int ht);
 signals:
 	void settingsChanged();
+	void filterSettingsChanged();
+	void sizeChanged();
+	void sizeRequest();
 private:
 	QMap<Setting::Index, ValueBox*> *valueBoxMap;
 	QList<Setting::Index> consumeList;
 	int savedHeight;
 	SettingStore *settingStore;
+	QPushButton *getSizeButton;
 	void valueBoxConsumption(Setting::Index idx, ValueBox *box);
 	void handleDependencies(Setting::Index idx,
 				const Setting::Value &value,
 				bool need_consume, bool store);
+	void handleSpecialCases(Setting::Index idx,
+				const Setting::Value &value);
+	void refreshUIValues();
+	void setUIValue(Setting::Index id, const Setting::Value &value);
+	Setting::Value getUIValue(Setting::Index id, bool &ok);
 public slots:
 	void show();
 private slots:

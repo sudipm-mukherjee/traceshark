@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2018, 2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2018, 2019, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -63,8 +63,7 @@
 #include <QMap>
 #include <QVBoxLayout>
 
-GraphEnableDialog::GraphEnableDialog(SettingStore *sstore,
-				     QWidget *parent):
+GraphEnableDialog::GraphEnableDialog(SettingStore *sstore, QWidget *parent):
 	QDialog(parent, Qt::WindowCloseButtonHint), savedHeight(900),
 	settingStore(sstore)
 {
@@ -130,16 +129,23 @@ GraphEnableDialog::GraphEnableDialog(SettingStore *sstore,
 	QHBoxLayout *buttonLayout = new QHBoxLayout();
 	mainLayout->addLayout(buttonLayout);
 	cancelButton = new QPushButton(tr("Cancel"));
+	getSizeButton = new QPushButton(tr("Use current main window size"));
 	okButton = new QPushButton(tr("OK"));
 	applyButton = new QPushButton(tr("Apply"));
 	saveButton = new QPushButton(tr("Apply && Save"));
+
+	if (!settingStore->getValue(Setting::LOAD_WINDOW_SIZE_START).boolv())
+		getSizeButton->setEnabled(false);
+
 	buttonLayout->addStretch();
 	buttonLayout->addWidget(cancelButton);
+	buttonLayout->addWidget(getSizeButton);
 	buttonLayout->addWidget(okButton);
 	buttonLayout->addWidget(applyButton);
 	buttonLayout->addWidget(saveButton);
 	buttonLayout->addStretch();
 	tsconnect(cancelButton, clicked(), this, cancelClicked());
+	sigconnect(getSizeButton, clicked(), this, sizeRequest());
 	tsconnect(okButton, clicked(), this, okClicked());
 	tsconnect(applyButton, clicked(), this, applyClicked());
 	tsconnect(saveButton, clicked(), this, saveClicked());
@@ -159,6 +165,34 @@ void GraphEnableDialog::okClicked()
 void GraphEnableDialog::cancelClicked()
 {
 	hide();
+}
+
+void GraphEnableDialog::setMainWindowSize(int wt, int ht)
+{
+	Setting::Value wt_value(wt);
+	Setting::Value ht_value(ht);
+
+	setUIValue(Setting::MAINWINDOW_WIDTH, wt_value);
+	setUIValue(Setting::MAINWINDOW_HEIGHT, ht_value);
+}
+
+Setting::Value GraphEnableDialog::getUIValue(Setting::Index id, bool &ok)
+{
+	QMap<Setting::Index, ValueBox*>::iterator iter;
+	ValueBox *vbox;
+
+	iter = valueBoxMap->find(id);
+	if (iter == valueBoxMap->end()) {
+		ok = false;
+		return Setting::Value(0);
+	}
+	vbox = *iter;
+	ok = true;
+	return vbox->value();
+}
+
+void GraphEnableDialog::refreshUIValues()
+{
 	QMap<Setting::Index, ValueBox*>::iterator iter;
 	for(iter = valueBoxMap->begin(); iter != valueBoxMap->end(); iter++) {
 		ValueBox *vbox = iter.value();
@@ -168,9 +202,24 @@ void GraphEnableDialog::cancelClicked()
 	}
 }
 
+void GraphEnableDialog::setUIValue(Setting::Index id,
+				   const Setting::Value &value)
+{
+	QMap<Setting::Index, ValueBox*>::iterator iter;
+	ValueBox *vbox;
+
+	iter = valueBoxMap->find(id);
+	if (iter == valueBoxMap->end())
+		return;
+
+	vbox = *iter;
+	vbox->setValue(value);
+}
+
 void GraphEnableDialog::applyClicked()
 {
 	bool changed = false;
+	bool filter_changed = false;
 	QMap<Setting::Index, ValueBox*>::iterator iter;
 
 	for(iter = valueBoxMap->begin(); iter != valueBoxMap->end(); iter++) {
@@ -179,13 +228,25 @@ void GraphEnableDialog::applyClicked()
 		Setting::Value uivalue = vbox->value();
 		const Setting::Value &setvalue = settingStore->getValue(idxn);
 		if (uivalue != setvalue) {
-			changed = true;
+			if (!Setting::isSizeSetting(idxn) &&
+			    !Setting::isFilterSetting(idxn))
+				changed = true;
+			if (Setting::isFilterSetting(idxn))
+				filter_changed = true;
 			settingStore->setValue(idxn, uivalue);
 		}
 	}
 
+	if (filter_changed)
+		emit filterSettingsChanged();
 	if (changed)
 		emit settingsChanged();
+	/*
+	 * It's too difficult to figure out whether the size has really changed,
+	 * so we do it unconditionally. The slot in the MainWindow class that is
+	 * connected to this signal has to check it instead.
+	 */
+	emit sizeChanged();
 }
 
 void GraphEnableDialog::saveClicked()
@@ -215,6 +276,7 @@ void GraphEnableDialog::handleBoxChanged(ValueBox *valueBox,
 	bool need_consume = settingStore->isFlagSet(idx, consumeflag);
 
 	handleDependencies(idx, value, need_consume, false);
+	handleSpecialCases(idx, value);
 }
 
 void GraphEnableDialog::handleDependencies(Setting::Index idx,
@@ -257,8 +319,20 @@ void GraphEnableDialog::handleDependencies(Setting::Index idx,
 	}
 }
 
+void GraphEnableDialog::handleSpecialCases(Setting::Index idx,
+					   const Setting::Value &value)
+{
+	bool en;
+
+	if (idx == Setting::LOAD_WINDOW_SIZE_START) {
+		en = value.boolv();
+		getSizeButton->setEnabled(en);
+	}
+}
+
 void GraphEnableDialog::show()
 {
+	refreshUIValues();
 	QDialog::show();
 }
 
