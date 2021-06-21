@@ -1,3 +1,11 @@
+traceshark (0.9.12~beta-1) experimental; urgency=medium
+
+  * New upstream version 0.9.12~beta
+    - Update copyright.
+  * Update Standards-Version to 4.5.1
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Mon, 21 Jun 2021 22:29:02 +0100
+
 traceshark (0.9.11~beta-2) unstable; urgency=medium
 
   * Add autopkgtest.
