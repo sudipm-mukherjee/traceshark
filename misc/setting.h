@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2018-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015, 2018-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -85,6 +85,10 @@ public:
 		FREQ_LINE_WIDTH,
 		MIGRATION_WIDTH,
 		EVENT_PID_FLT_INCL_ON,
+		LOAD_WINDOW_SIZE_START,
+		MAINWINDOW_HEIGHT,
+		MAINWINDOW_WIDTH,
+		SAVE_WINDOW_SIZE_EXIT,
 		NR_SETTINGS,
 	} index_t;
         class Value;
@@ -158,6 +162,8 @@ public:
 	};
 	Setting();
 
+	inline static bool isSizeSetting(Index id);
+	inline static bool isFilterSetting(Index id);
 	static bool isWideScreen();
 	static bool isLowResScreen();
 
@@ -368,6 +374,17 @@ vtl_always_inline const Setting::Value &Setting::Dependency::high() const
 {
 	assert_interval();
 	return high_value;
+}
+
+inline bool Setting::isSizeSetting(Index id) {
+	return id == LOAD_WINDOW_SIZE_START ||
+		id == MAINWINDOW_HEIGHT ||
+		id == MAINWINDOW_WIDTH ||
+		id == SAVE_WINDOW_SIZE_EXIT;
+}
+
+inline bool Setting::isFilterSetting(Index id) {
+	return id == EVENT_PID_FLT_INCL_ON;
 }
 
 #endif /* SETTING_H */

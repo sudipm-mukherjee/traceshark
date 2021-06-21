@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2017, 2019-2021
- * Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2020, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -51,58 +50,51 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "parser/traceevent.h"
-#include "misc/types.h"
-#include "mm/stringtree.h"
+#ifndef _REGEXFILTER_H
+#define _REGEXFILTER_H
 
-/* TSHARK_ITEM_ is used by the TRACEEVENT_DEFS_ macro */
-#undef TSHARK_ITEM_
-#define TSHARK_ITEM_(A, B) B
-/*
- * The maximum length of these strings should be in the macro
- * EVENTSTRINGS_MAXLEN, which is defined misc/types.h
- */
-const char * const eventstrings[] = {
-	TRACEEVENTS_DEFS_
+extern "C" {
+#include <sys/types.h>
+#include <regex.h>
+}
+
+#include <QString>
+#include <QVector>
+
+#include "misc/traceshark.h"
+
+#define REGEXFILTER_POS_DEFS_						\
+	REGEXFILTER_POS_ITEM_(NONE, "None"),				\
+	REGEXFILTER_POS_ITEM_(ABSOLUTE, "Absolute"),			\
+	REGEXFILTER_POS_ITEM_(RELATIVE, "Previous match"),		\
+	REGEXFILTER_POS_ITEM_(NR, nullptr)
+
+class Regex {
+public:
+
+#undef REGEXFILTER_POS_ITEM_
+#define REGEXFILTER_POS_ITEM_(a, b) POS_##a
+	enum PosType : int {
+		REGEXFILTER_POS_DEFS_
+	};
+#undef REGEXFILTER_POS_ITEM_
+	static const char * const posNames[];
+
+	enum TShark::Logic logic;
+	bool inverted;
+	bool caseSensitive;
+	bool isExtended;
+	enum PosType posType;
+	int pos;
+	QString text;
+	regex_t regex;
+	bool regex_valid;
 };
-#undef TSHARK_ITEM_
 
-StringTree<> *TraceEvent::stringTree = nullptr;
+class RegexFilter {
+public:
+	QVector<Regex> regvec;
+	bool valid;
+};
 
-void TraceEvent::setStringTree(StringTree<> *sTree)
-{
-	stringTree = sTree;
-}
-
-const StringTree<> *TraceEvent::getStringTree()
-{
-	return stringTree;
-}
-
-const TString *TraceEvent::getEventName() const
-{
-	return stringTree->stringLookup(TraceEvent::type);
-}
-
-void TraceEvent::clear()
-{
-	taskName = nullptr;
-	pid = 0;
-	cpu = 0;
-	time = VTL_TIME_ZERO;
-	intArg = 0;
-	type = EVENT_ERROR;
-	argv = nullptr;
-	argc = 0;
-	postEventInfo = nullptr;
-}
-
-const TString *TraceEvent::getEventName(event_t event)
-{
-	return stringTree->stringLookup(event);
-}
-
-int TraceEvent::getNrEvents()
-{
-	return stringTree->getMaxEvent() + 1;
-}
+#endif /* _REGEXFILTER_H */

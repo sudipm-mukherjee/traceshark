@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -69,6 +69,7 @@
 #include "ui/licensedialog.h"
 #include "ui/mainwindow.h"
 #include "ui/migrationline.h"
+#include "ui/regexdialog.h"
 #include "ui/taskgraph.h"
 #include "ui/taskrangeallocator.h"
 #include "ui/taskselectdialog.h"
@@ -116,6 +117,9 @@
 
 #define TOOLTIP_SHOWTASKS		\
 "Show a list of all tasks and it's possible to select one"
+
+#define TOOLTIP_SHOWARGFILTER		\
+"Show a dialog for filtering the info field with POSIX regular expressions"
 
 #define TOOLTIP_CPUFILTER		\
 "Select a subset of CPUs to filter on"
@@ -252,6 +256,8 @@ MainWindow::MainWindow():
 	tracePlot(nullptr), scrollBarUpdate(false), graphEnableDialog(nullptr),
 	filterActive(false)
 {
+	createAboutBox();
+	createAboutQCustomPlot();
 	settingStore = new SettingStore();
 	loadSettings();
 
@@ -391,19 +397,10 @@ MainWindow::~MainWindow()
 	if (analyzer->isOpen())
 		closeTrace();
 	delete analyzer;
-	delete tracePlot;
 	delete taskRangeAllocator;
-	delete licenseDialog;
-	delete eventInfoDialog;
-	delete taskSelectDialog;
-	delete statsDialog;
-	delete statsLimitedDialog;
-	delete eventSelectDialog;
-	delete cpuSelectDialog;
-	delete graphEnableDialog;
+	delete settingStore;
 
 	vtl::set_error_handler(nullptr);
-	delete errorDialog;
 
 	for (i = 0; i < STATUS_NR; i++)
 		delete statusStrings[i];
@@ -411,12 +408,26 @@ MainWindow::~MainWindow()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+	int wt;
+	int ht;
+	int ts_errno;
+
 	/* Here is a great place to save settings, if we ever want to do it */
 	taskSelectDialog->hide();
 	eventSelectDialog->hide();
 	cpuSelectDialog->hide();
 	statsDialog->hide();
 	statsLimitedDialog->hide();
+	if (settingStore->getValue(Setting::SAVE_WINDOW_SIZE_EXIT).boolv()) {
+		wt = width();
+		ht = height();
+		settingStore->setIntValue(Setting::MAINWINDOW_WIDTH, wt);
+		settingStore->setIntValue(Setting::MAINWINDOW_HEIGHT, ht);
+		ts_errno = settingStore->saveSettings();
+		if (ts_errno != 0)
+			vtl::warn(ts_errno, "Failed to save settings to %s",
+				  TS_SETTING_FILENAME);
+	}
 	event->accept();
 	/* event->ignore() could be used to refuse to close the window */
 }
@@ -808,11 +819,29 @@ double MainWindow::autoZoomVSize()
 void MainWindow::loadSettings()
 {
 	int ts_errno;
+	int wt;
+	int ht;
+	QRect geometry;
 
 	ts_errno = settingStore->loadSettings();
-	if (ts_errno != 0)
+	if (ts_errno != 0) {
 		vtl::warn(ts_errno, "Failed to load settings from %s",
 			  TS_SETTING_FILENAME);
+		return;
+	}
+	if (settingStore->getValue(Setting::LOAD_WINDOW_SIZE_START).boolv()) {
+		wt = settingStore->getValue(
+			Setting::MAINWINDOW_WIDTH).intv();
+		ht = settingStore->getValue(
+			Setting::MAINWINDOW_HEIGHT).intv();
+	} else {
+		geometry = QApplication::desktop()->availableGeometry();
+		wt = geometry.width() - geometry.width() / 32;
+		ht = geometry.height() - geometry.height() / 16;
+		settingStore->setIntValue(Setting::MAINWINDOW_WIDTH, wt);
+		settingStore->setIntValue(Setting::MAINWINDOW_HEIGHT, ht);
+	}
+	resize(wt, ht);
 }
 
 void MainWindow::setupCursors()
@@ -1017,6 +1046,7 @@ void MainWindow::setTraceActionsEnabled(bool e)
 	showTasksAction->setEnabled(e);
 	filterCPUsAction->setEnabled(e);
 	showEventsAction->setEnabled(e);
+	showArgFilterAction->setEnabled(e);
 	timeFilterAction->setEnabled(e);
 	showStatsAction->setEnabled(e);
 	showStatsTimeLimitedAction->setEnabled(e);
@@ -1263,7 +1293,7 @@ void MainWindow::verticalZoom()
 	}
 }
 
-void MainWindow::about()
+void MainWindow::createAboutBox()
 {
 	QString textAboutCaption;
 	QString textAbout;
@@ -1275,11 +1305,11 @@ void MainWindow::about()
 	       "</p>"
 		).arg(QLatin1String(TRACESHARK_VERSION_STRING));
 	textAbout = QMessageBox::tr(
-	       "<p>Copyright &copy; 2014-2020 Viktor Rosendahl"
-	       "<p>This program comes with ABSOLUTELY NO WARRANTY; details below."
+	       "<p>Copyright &copy; 2014-2021 Viktor Rosendahl<p>"
+	       "<p>This program comes with ABSOLUTELY NO WARRANTY; details below.</p>"
 	       "<p>This is free software, and you are welcome to redistribute it"
 	       " under certain conditions; select \"License\" under the \"Help\""
-	       " menu for details."
+	       " menu for details.</p>"
 
 	       "<h2>15. Disclaimer of Warranty.</h2>"
 	       "<p>THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT "
@@ -1291,7 +1321,7 @@ void MainWindow::about()
 	       "PARTICULAR PURPOSE. THE ENTIRE RISK AS TO THE QUALITY AND "
 	       "PERFORMANCE OF THE PROGRAM IS WITH YOU.  SHOULD THE PROGRAM "
 	       "PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY "
-	       "SERVICING, REPAIR OR CORRECTION."
+	       "SERVICING, REPAIR OR CORRECTION.</p>"
 
 	       "<h2>16. Limitation of Liability.</h2>"
 	       "<p>IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED "
@@ -1304,7 +1334,7 @@ void MainWindow::about()
 	       "SUSTAINED BY YOU OR THIRD PARTIES OR A FAILURE OF THE PROGRAM "
 	       "TO OPERATE WITH ANY OTHER PROGRAMS), EVEN IF SUCH HOLDER OR "
 	       "OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH "
-	       "DAMAGES."
+	       "DAMAGES.</p>"
 
 	       "<h2>17. Interpretation of Sections 15 and 16.</h2>"
 	       "<p>If the disclaimer of warranty and limitation of "
@@ -1313,20 +1343,23 @@ void MainWindow::about()
 	       "law that most closely approximates an absolute waiver of all "
 	       "civil liability in connection with the Program, unless a "
 	       "warranty or assumption of liability accompanies a copy of the "
-	       "Program in return for a fee.");
-	QMessageBox *msgBox = new QMessageBox(this);
-	msgBox->setAttribute(Qt::WA_DeleteOnClose);
-	msgBox->setWindowTitle(tr("About Traceshark"));
-	msgBox->setText(textAboutCaption);
-	msgBox->setInformativeText(textAbout);
+	       "Program in return for a fee.</p>");
+	aboutBox = new QMessageBox(this);
+	aboutBox->setWindowTitle(tr("About Traceshark"));
+	aboutBox->setText(textAboutCaption);
+	aboutBox->setInformativeText(textAbout);
 
 	QPixmap pm(QLatin1String(RESSRC_GPH_SHARK));
 	if (!pm.isNull())
-		msgBox->setIconPixmap(pm);
-	msgBox->show();
+		aboutBox->setIconPixmap(pm);
 }
 
-void MainWindow::aboutQCustomPlot()
+void MainWindow::about()
+{
+	aboutBox->show();
+}
+
+void MainWindow::createAboutQCustomPlot()
 {
 	QString textAboutCaption;
 	QString textAbout;
@@ -1349,16 +1382,19 @@ void MainWindow::aboutQCustomPlot()
 	       " menu for details."
 	       "<p>This is free software, and you are welcome to redistribute it"
 	       " under certain conditions; see the license for details.").arg(QLatin1String("http://qcustomplot.com"));
-	QMessageBox *msgBox = new QMessageBox(this);
-	msgBox->setAttribute(Qt::WA_DeleteOnClose);
-	msgBox->setWindowTitle(tr("About QCustomPlot"));
-	msgBox->setText(textAboutCaption);
-	msgBox->setInformativeText(textAbout);
+	aboutQCPBox = new QMessageBox(this);
+	aboutQCPBox->setWindowTitle(tr("About QCustomPlot"));
+	aboutQCPBox->setText(textAboutCaption);
+	aboutQCPBox->setInformativeText(textAbout);
 
 	QPixmap pm(QLatin1String(RESSRC_GPH_QCP_LOGO));
 	if (!pm.isNull())
-		msgBox->setIconPixmap(pm);
-	msgBox->show();
+		aboutQCPBox->setIconPixmap(pm);
+}
+
+void MainWindow::aboutQCustomPlot()
+{
+	aboutQCPBox->show();
 }
 
 void MainWindow::license()
@@ -1607,6 +1643,11 @@ void MainWindow::createActions()
 	showEventsAction->setToolTip(tr(TOOLTIP_SHOWEVENTS));
 	tsconnect(showEventsAction, triggered(), this, showEventFilter());
 
+	showArgFilterAction = new QAction(tr("Filter on info field..."), this);
+	showArgFilterAction->setIcon(QIcon(RESSRC_GPH_ARGFILTER));
+	showArgFilterAction->setToolTip(tr(TOOLTIP_SHOWARGFILTER));
+	tsconnect(showArgFilterAction, triggered(), this, showArgFilter());
+
 	timeFilterAction = new QAction(tr("Filter on &time"), this);
 	timeFilterAction->setIcon(QIcon(RESSRC_GPH_TIMEFILTER));
 	timeFilterAction->setToolTip(tr(TOOLTIP_TIMEFILTER));
@@ -1824,6 +1865,7 @@ void MainWindow::createToolBars()
 	viewToolBar->addAction(showTasksAction);
 	viewToolBar->addAction(filterCPUsAction);
 	viewToolBar->addAction(showEventsAction);
+	viewToolBar->addAction(showArgFilterAction);
 	viewToolBar->addAction(timeFilterAction);
 	viewToolBar->addAction(resetFiltersAction);
 	viewToolBar->addAction(graphEnableAction);
@@ -1872,6 +1914,7 @@ void MainWindow::createMenus()
 	viewMenu->addAction(showTasksAction);
 	viewMenu->addAction(filterCPUsAction);
 	viewMenu->addAction(showEventsAction);
+	viewMenu->addAction(showArgFilterAction);
 	viewMenu->addAction(timeFilterAction);
 	viewMenu->addAction(resetFiltersAction);
 	viewMenu->addAction(graphEnableAction);
@@ -1899,7 +1942,7 @@ void MainWindow::createMenus()
 	eventMenu->addAction(eventCPUAction);
 	eventMenu->addAction(eventTypeAction);
 
-	helpMenu = menuBar()->addMenu(tr("He&lp"));
+	helpMenu = menuBar()->addMenu(tr("&Help"));
 	helpMenu->addAction(aboutAction);
 	helpMenu->addAction(aboutQCPAction);
 	helpMenu->addAction(aboutQtAction);
@@ -1922,25 +1965,26 @@ void MainWindow::createStatusBar()
 
 void MainWindow::createDialogs()
 {
-	errorDialog = new ErrorDialog();
-	licenseDialog = new LicenseDialog();
-	eventInfoDialog = new EventInfoDialog();
+	errorDialog = new ErrorDialog(this);
+	licenseDialog = new LicenseDialog(this);
+	eventInfoDialog = new EventInfoDialog(this);
 	taskSelectDialog =
-		new TaskSelectDialog(nullptr, tr("Task Selector"),
+		new TaskSelectDialog(this, tr("Task Selector"),
 				     TaskSelectDialog::TaskSelectRegular);
-	statsDialog = new TaskSelectDialog(nullptr, tr("Global Statistics"),
+	statsDialog = new TaskSelectDialog(this, tr("Global Statistics"),
 					   TaskSelectDialog::TaskSelectStats);
 	statsLimitedDialog =
-		new TaskSelectDialog(nullptr, tr("Cursor Statistics"),
+		new TaskSelectDialog(this, tr("Cursor Statistics"),
 				     TaskSelectDialog::TaskSelectStatsLimited);
 
 	taskSelectDialog->setAllowedAreas(Qt::LeftDockWidgetArea);
 	statsDialog->setAllowedAreas(Qt::LeftDockWidgetArea);
 	statsLimitedDialog->setAllowedAreas(Qt::RightDockWidgetArea);
 
-	eventSelectDialog = new EventSelectDialog();
-	cpuSelectDialog = new CPUSelectDialog();
-	graphEnableDialog = new GraphEnableDialog(settingStore, nullptr);
+	eventSelectDialog = new EventSelectDialog(this);
+	cpuSelectDialog = new CPUSelectDialog(this);
+	graphEnableDialog = new GraphEnableDialog(settingStore, this);
+	regexDialog = new RegexDialog(this);
 
 	vtl::set_error_handler(errorDialog);
 }
@@ -2040,6 +2084,17 @@ void MainWindow::dialogConnections()
 	/* graph enable dialog */
 	tsconnect(graphEnableDialog, settingsChanged(),
 		  this, consumeSettings());
+	tsconnect(graphEnableDialog, filterSettingsChanged(),
+		  this, consumeFilterSettings());
+	tsconnect(graphEnableDialog, sizeChanged(),
+		  this, consumeSizeChange());
+	tsconnect(graphEnableDialog, sizeRequest(),
+		  this, transmitSize());
+
+	/* regex dialog */
+	tsconnect(regexDialog, createFilter(RegexFilter &, bool),
+		  this, createRegexFilter(RegexFilter &, bool));
+	tsconnect(regexDialog, resetFilter(), this, resetRegexFilter());
 }
 
 void MainWindow::setStatus(status_t status, const QString *fileName)
@@ -2271,49 +2326,51 @@ void MainWindow::createEventFilter(QMap<event_t, event_t> &map, bool orlogic)
 	updateResetFiltersEnabled();
 }
 
-
-void MainWindow::resetPidFilter()
+void MainWindow::createRegexFilter(RegexFilter &regexFilter, bool orlogic)
 {
-	vtl::Time saved;
+	vtl::Time saved = eventsWidget->getSavedScroll();
+	int ts_errno;
 
-	if (!analyzer->filterActive(FilterState::FILTER_PID))
-		return;
-
-	saved = eventsWidget->getSavedScroll();
 	eventsWidget->beginResetModel();
-	analyzer->disableFilter(FilterState::FILTER_PID);
+	ts_errno = analyzer->createRegexFilter(regexFilter, orlogic);
 	setEventsWidgetEvents();
 	eventsWidget->endResetModel();
 	scrollTo(saved);
 	updateResetFiltersEnabled();
+	if (ts_errno != 0)
+		vtl::warn(ts_errno, "Failed to compile regex");
+}
+
+void MainWindow::resetPidFilter()
+{
+	resetFilter(FilterState::FILTER_PID);
 }
 
 void MainWindow::resetCPUFilter()
 {
-	vtl::Time saved;
-
-	if (!analyzer->filterActive(FilterState::FILTER_CPU))
-		return;
-
-	saved = eventsWidget->getSavedScroll();
-	eventsWidget->beginResetModel();
-	analyzer->disableFilter(FilterState::FILTER_CPU);
-	setEventsWidgetEvents();
-	eventsWidget->endResetModel();
-	scrollTo(saved);
-	updateResetFiltersEnabled();
+	resetFilter(FilterState::FILTER_CPU);
 }
 
 void MainWindow::resetEventFilter()
 {
+	resetFilter(FilterState::FILTER_EVENT);
+}
+
+void MainWindow::resetRegexFilter()
+{
+	resetFilter(FilterState::FILTER_REGEX);
+}
+
+void MainWindow::resetFilter(FilterState::filter_t filter)
+{
 	vtl::Time saved;
 
-	if (!analyzer->filterActive(FilterState::FILTER_EVENT))
+	if (!analyzer->filterActive(filter))
 		return;
 
 	saved = eventsWidget->getSavedScroll();
 	eventsWidget->beginResetModel();
-	analyzer->disableFilter(FilterState::FILTER_EVENT);
+	analyzer->disableFilter(filter);
 	setEventsWidgetEvents();
 	eventsWidget->endResetModel();
 	scrollTo(saved);
@@ -2512,6 +2569,38 @@ void MainWindow::consumeSettings()
 		updateTaskGraphActions();
 	}
 	graphEnableDialog->checkConsumption();
+}
+
+void MainWindow::consumeFilterSettings()
+{
+	bool inclusive =
+		settingStore->getValue(Setting::EVENT_PID_FLT_INCL_ON).boolv();
+	if (analyzer->updatePidFilter(inclusive))
+		/*
+		 * When this function is called, the focus is often on the
+		 * graphEnableDialog widget but the user still might be
+		 * expecting to see an immediate update of the eventsWidget,
+		 * therefore we call repaint() here. Unfortunately, it doesn't
+		 * help to call update().
+		 */
+		eventsWidget->repaint();
+}
+
+void MainWindow::consumeSizeChange()
+{
+	int wt, ht;
+
+	if (settingStore->getValue(Setting::LOAD_WINDOW_SIZE_START).boolv()) {
+		ht = settingStore->getValue(Setting::MAINWINDOW_HEIGHT).intv();
+		wt = settingStore->getValue(Setting::MAINWINDOW_WIDTH).intv();
+		if (wt != width() || ht != height())
+			resize(wt, ht);
+	}
+}
+
+void MainWindow::transmitSize()
+{
+	graphEnableDialog->setMainWindowSize(width(), height());
 }
 
 void MainWindow::addTaskGraph(int pid)
@@ -2849,6 +2938,14 @@ void MainWindow::showEventFilter()
 		eventSelectDialog->show();
 }
 
+void MainWindow::showArgFilter()
+{
+	if (regexDialog->isVisible())
+		regexDialog->hide();
+	else
+		regexDialog->show();
+}
+
 void MainWindow::showGraphEnable()
 {
 	if (graphEnableDialog->isVisible())
@@ -3146,8 +3243,9 @@ bool MainWindow::isOpenGLEnabled()
 
 void MainWindow::setupOpenGL()
 {
-	if (has_opengl() &&
-	    settingStore->getValue(Setting::OPENGL_ENABLED).boolv()) {
+	bool opengl = settingStore->getValue(Setting::OPENGL_ENABLED).boolv();
+
+	if (has_opengl() && opengl) {
 		if (!isOpenGLEnabled()) {
 			tracePlot->setOpenGl(true, 4);
 			if (!tracePlot->openGl()) {
@@ -3162,7 +3260,11 @@ void MainWindow::setupOpenGL()
 			}
 		}
 	}
-	settingStore->setBoolValue(Setting::OPENGL_ENABLED, isOpenGLEnabled());
+	if (opengl != isOpenGLEnabled()) {
+		settingStore->setBoolValue(Setting::OPENGL_ENABLED,
+					   isOpenGLEnabled());
+		settingStore->updateDependents(Setting::OPENGL_ENABLED);
+	}
 }
 
 /* Adds the currently selected task to the legend */

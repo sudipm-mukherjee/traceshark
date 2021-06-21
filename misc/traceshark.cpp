@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2017, 2019-2021
- * Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -51,58 +50,16 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "parser/traceevent.h"
-#include "misc/types.h"
-#include "mm/stringtree.h"
+#include "misc/traceshark.h"
+#include "vtl/compiler.h"
 
-/* TSHARK_ITEM_ is used by the TRACEEVENT_DEFS_ macro */
-#undef TSHARK_ITEM_
-#define TSHARK_ITEM_(A, B) B
-/*
- * The maximum length of these strings should be in the macro
- * EVENTSTRINGS_MAXLEN, which is defined misc/types.h
- */
-const char * const eventstrings[] = {
-	TRACEEVENTS_DEFS_
-};
-#undef TSHARK_ITEM_
+namespace TShark {
 
-StringTree<> *TraceEvent::stringTree = nullptr;
-
-void TraceEvent::setStringTree(StringTree<> *sTree)
-{
-	stringTree = sTree;
-}
-
-const StringTree<> *TraceEvent::getStringTree()
-{
-	return stringTree;
-}
-
-const TString *TraceEvent::getEventName() const
-{
-	return stringTree->stringLookup(TraceEvent::type);
-}
-
-void TraceEvent::clear()
-{
-	taskName = nullptr;
-	pid = 0;
-	cpu = 0;
-	time = VTL_TIME_ZERO;
-	intArg = 0;
-	type = EVENT_ERROR;
-	argv = nullptr;
-	argc = 0;
-	postEventInfo = nullptr;
-}
-
-const TString *TraceEvent::getEventName(event_t event)
-{
-	return stringTree->stringLookup(event);
-}
-
-int TraceEvent::getNrEvents()
-{
-	return stringTree->getMaxEvent() + 1;
+#undef TSHARK_LOGIC_ITEM_
+#define TSHARK_LOGIC_ITEM_(a) vtl_str(a)
+	const char * const logic_names[] = {
+		TSHARK_LOGIC_DEFS_,
+		nullptr
+	};
+#undef TSHARK_LOGIC_ITEM_
 }
