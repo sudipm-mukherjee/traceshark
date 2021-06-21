@@ -5,7 +5,7 @@ Source: https://github.com/cunctator/traceshark
 Files-Excluded: qcustomplot
 
 Files: *
-Copyright: 2014-2019 Viktor Rosendahl <viktor.rosendahl@gmail.com>
+Copyright: 2014-2021, Viktor Rosendahl <viktor.rosendahl@gmail.com>
 License: GPL-2+ or BSD-2-clause
 
 Files: debian/*
