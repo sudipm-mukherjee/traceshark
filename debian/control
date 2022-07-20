@@ -3,7 +3,7 @@ Section: devel
 Priority: optional
 Maintainer: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
 Build-Depends: debhelper-compat (= 13), qtbase5-dev, libqcustomplot-dev
-Standards-Version: 4.5.1
+Standards-Version: 4.6.0
 Homepage: https://github.com/cunctator/traceshark
 Vcs-Browser: https://github.com/sudipm-mukherjee/traceshark.git
 Vcs-Git: https://github.com/sudipm-mukherjee/traceshark.git
