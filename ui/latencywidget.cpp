@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2020, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2021, 2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -50,69 +50,105 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MISC_OSAPI_H
-#define MISC_OSAPI_H
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QWidget>
 
-#include <cstring>
+#include "misc/traceshark.h"
+#include "ui/latencymodel.h"
+#include "ui/latencywidget.h"
+#include "ui/tableview.h"
 
-extern "C" {
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
+LatencyWidget::LatencyWidget(const QString &title, enum Latency::Type type,
+			     QWidget *parent)
+	: QDockWidget(title, parent)
+{
+	QWidget *widget = new QWidget(this);
+	QVBoxLayout *mainLayout =  new QVBoxLayout(widget);
+	setWidget(widget);
+	QHBoxLayout *buttonLayout = new QHBoxLayout();
+
+	latencyView =  new TableView(this, TableView::TABLE_SINGLEROWSELECT);
+	latencyModel = new LatencyModel(type);
+
+	latencyView->setModel(latencyModel);
+
+	mainLayout->addWidget(latencyView);
+	mainLayout->addLayout(buttonLayout);
+
+	formatBox = new QComboBox();
+
+	/*
+	 * These must be in the same order as the items in
+	 * TraceAnalyzer:exportformat_t
+	 */
+	formatBox->addItem(QString(tr("ASCII")));
+	formatBox->addItem(QString(tr("CSV")));
+	formatBox->setCurrentIndex(0);
+
+	QPushButton *exportButton = new QPushButton(tr("Export"));
+	QPushButton *closeButton = new QPushButton(tr("Close"));
+
+	buttonLayout->addStretch();
+	buttonLayout->addWidget(formatBox);
+	buttonLayout->addWidget(exportButton);
+	buttonLayout->addWidget(closeButton);
+	buttonLayout->addStretch();
+
+	hide();
+
+	tsconnect(closeButton, clicked(), this, closeClicked());
+	tsconnect(exportButton, clicked(), this, exportClicked());
+	tsconnect(latencyView, doubleClicked(const QModelIndex &),
+		  this, handleDoubleClick(const QModelIndex &));
 }
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#endif
+
+LatencyWidget::~LatencyWidget()
+{}
+
+void LatencyWidget::setAnalyzer(TraceAnalyzer *azr)
+{
+	latencyModel->setAnalyzer(azr);
+}
+
+void LatencyWidget::clear()
+{
+	latencyModel->clear();
+}
 
 /*
- * bzero() was removed from IEEE Std 1003.1-2008 (``POSIX.1'') and some
- * implementations remove bzero() if we have defined _POSIX_C_SOURCE=200809L
+ * Apparently it's a bad idea to do taskView->resizeColumnsToContents() if we
+ * are not visible.
  */
-#define tshark_bzero(ADDR, SIZE) ((void)memset(ADDR, 0, SIZE))
+void LatencyWidget::resizeColumnsToContents()
+{
+	if (QDockWidget::isVisible())
+		latencyView->resizeColumnsToContents();
+}
 
-#if defined(__APPLE__) && TARGET_OS_MAC
+void LatencyWidget::show()
+{
+	QDockWidget::show();
+	latencyView->resizeColumnsToContents();
+}
 
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
+void LatencyWidget::closeClicked()
+{
+	QDockWidget::hide();
+	emit QDockWidgetNeedsRemoval(this);
+}
 
-/* These are for comparing mtime and ctime in a portable way */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
+void LatencyWidget::exportClicked()
+{
+	emit exportRequested(formatBox->currentIndex());
+}
 
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
+void LatencyWidget::handleDoubleClick(const QModelIndex &index)
+{
+	const Latency *latency = latencyModel->rowToLatency(index.row());
 
-#elif defined(__linux__)
-
-/* These are the Linux versions, note the difference in members names */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctim, s2.st_ctim)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtim, s2.st_mtim)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(pthread_self(), \
-							   NAME)
-
-#elif defined(__unix__)
-
-/*
- * For now what is here in __unix__ is just copies of whatever is in the mac
- * section but that's just because at this point I have not tried with the
- * other unices, so this section is kind of a placeholder. I assume that many
- * would resemble macOS more than Linux.
- */
-
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
-
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#else /* __unix__ */
-#error "Unknown Operating system"
-#endif
-
-#endif /* MISC_OSAPI_H */
+	if (latency != nullptr)
+		emit latencyDoubleClicked(latency);
+}

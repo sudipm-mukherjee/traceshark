@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2018, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2018, 2020-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -61,33 +61,39 @@
 
 namespace vtl {
 
-#define VTL_TIME_MAX vtl::Time(false, UINT_MAX, UINT_MAX)
-#define VTL_TIME_MIN vtl::Time(true, UINT_MAX, UINT_MAX)
-#define VTL_TIME_ZERO vtl::Time(false, 0, 0)
-
-#define VTL_TIME_MAX_(A, B) (A > B ? A:B)
-#define VTL_TIME_MIN_(A, B) (A < B ? A:B)
+#define VTL_TIME_MAXFN(A, B) (A > B ? A:B)
+#define VTL_TIME_MINFN(A, B) (A < B ? A:B)
 
 #define VTL_TIMEINT_REQ_ (1000000000000000000LL)
 
 #if INT_MAX >= VTL_TIMEINT_REQ_ && INT_MIN < -VTL_TIMEINT_REQ_
 #define	VTL_TIME_MILLE_ (1000)
 #define VTL_TIME_USE_INT
+#define VTL_TIME_INT_MAX INT_MAX
+#define VTL_TIME_INT_MIN INT_MIN
 #define VTL_TIME_FMT_STRING_ "%d"
 
 #elif LONG_MAX >= VTL_TIMEINT_REQ_ && LONG_MIN < -VTL_TIMEINT_REQ_
 #define	VTL_TIME_MILLE_ (1000L)
 #define VTL_TIME_USE_LONG
+#define VTL_TIME_INT_MAX LONG_MAX
+#define VTL_TIME_INT_MIN LONG_MIN
 #define VTL_TIME_FMT_STRING_  "%ld"
 
 #elif LLONG_MAX >= VTL_TIMEINT_REQ_ && LLONG_MIN < -VTL_TIMEINT_REQ_
 #define	VTL_TIME_MILLE_ (1000LL)
 #define VTL_TIME_USE_LLONG
+#define VTL_TIME_INT_MAX LLONG_MAX
+#define VTL_TIME_INT_MIN LLONG_MIN
 #define VTL_TIME_FMT_STRING_  "%lld"
 
 #else
 #error "A longer long long is required!"
 #endif
+
+#define VTL_TIME_MAX vtl::Time(VTL_TIME_INT_MAX)
+#define VTL_TIME_MIN vtl::Time(VTL_TIME_INT_MIN)
+#define VTL_TIME_ZERO vtl::Time(0)
 
 #define USECS_PER_MSEC (VTL_TIME_MILLE_)
 #define NSECS_PER_USEC (VTL_TIME_MILLE_)
@@ -105,11 +111,10 @@ namespace vtl {
 #elif defined(VTL_TIME_USE_LLONG)
 		typedef long long timeint_t;
 #endif
-	Time(bool n = false, timeint_t s = 0, timeint_t ns = 0,
-	     unsigned int p = 0):
-		time(n ? (- s * NSECS_PER_SEC + ns) : (s * NSECS_PER_SEC + ns)),
-			precision(p)
-		{}
+
+		Time(timeint_t ns = 0, unsigned int p = 6):
+			time(ns), precision(p)
+			{}
 		vtl_always_inline Time operator+(const Time &other) const;
 		vtl_always_inline void operator+=(const Time &other);
 		vtl_always_inline Time operator-(const Time &other) const;
@@ -127,6 +132,8 @@ namespace vtl {
 		vtl_always_inline void operator*=(int other);
 		vtl_always_inline void operator*=(unsigned long other);
 		vtl_always_inline void operator*=(unsigned other);
+		vtl_always_inline int compare(const Time &other) const;
+		vtl_always_inline int rcompare(const Time &other) const;
 		vtl_always_inline static Time fromDouble(const double &t);
 		vtl_always_inline static Time fromString(const char *str,
 							 bool &ok);
@@ -145,34 +152,34 @@ namespace vtl {
 							  bool spaced,
 							  bool colonatend);
 		timeint_t time;
-		unsigned int precision : 4;
+		unsigned int precision : 8;
 	} time_t;
 
 	vtl_always_inline Time Time::operator+(const Time &other) const
 	{
 		Time r;
-		r.precision = VTL_TIME_MAX_(precision, other.precision);
+		r.precision = VTL_TIME_MAXFN(precision, other.precision);
 		r.time = time + other.time;
 		return r;
 	}
 
 	vtl_always_inline void Time::operator+=(const Time &other)
 	{
-		precision = VTL_TIME_MAX_(precision, other.precision);
+		precision = VTL_TIME_MAXFN(precision, other.precision);
 		time = time + other.time;
 	}
 
 	vtl_always_inline Time Time::operator-(const Time &other) const
 	{
 		Time r;
-		r.precision = VTL_TIME_MAX_(precision, other.precision);
+		r.precision = VTL_TIME_MAXFN(precision, other.precision);
 		r.time = time - other.time;
 		return r;
 	}
 
 	vtl_always_inline void Time::operator-=(const Time &other)
 	{
-		precision = VTL_TIME_MAX_(precision, other.precision);
+		precision = VTL_TIME_MAXFN(precision, other.precision);
 		time = time - other.time;
 	}
 
@@ -251,6 +258,28 @@ namespace vtl {
 	vtl_always_inline void Time::operator*=(unsigned other)
 	{
 		time *= other;
+	}
+
+	vtl_always_inline int Time::compare(const Time &other) const
+	{
+		timeint_t r = time - other.time;
+
+		if (r < 0)
+			return -1;
+		if (r > 0)
+			return 1;
+		return 0;
+	}
+
+	vtl_always_inline int Time::rcompare(const Time &other) const
+	{
+		timeint_t r = other.time - time;
+
+		if (r < 0)
+			return -1;
+		if (r > 0)
+			return 1;
+		return 0;
 	}
 
 	vtl_always_inline Time Time::fromDouble(const double &t)

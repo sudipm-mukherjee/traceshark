@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2020, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2021, 2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -50,69 +50,44 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MISC_OSAPI_H
-#define MISC_OSAPI_H
+#ifndef LATENCY_H
+#define LATENCY_H
 
-#include <cstring>
+#include "vtl/compiler.h"
+#include "vtl/time.h"
 
-extern "C" {
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-}
+class Latency {
+public:
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
+	typedef enum Type : int {
+		TYPE_WAKEUP = 0,
+		TYPE_SCHED
+	} type_t;
+
+	typedef enum Compare : int {
+		CMP_PID = 0,
+		CMP_NAME,
+		CMP_TIME,
+		CMP_DELAY,
+		CMP_PLACE,
+		/*
+		 * This is only intended for the purpose of sorting the latency
+		 * array when we create the place member.
+		 */
+		CMP_CREATE_PLACE
+	} compare_t;
+
+	typedef enum Order : int {
+		ORDER_NORMAL = 0,
+		ORDER_REVERSE
+	} order_t;
+
+	vtl::Time time;
+	vtl::Time delay;
+	int pid;
+	unsigned int place;
+	int sched_idx;
+	int runnable_idx;
+};
+
 #endif
-
-/*
- * bzero() was removed from IEEE Std 1003.1-2008 (``POSIX.1'') and some
- * implementations remove bzero() if we have defined _POSIX_C_SOURCE=200809L
- */
-#define tshark_bzero(ADDR, SIZE) ((void)memset(ADDR, 0, SIZE))
-
-#if defined(__APPLE__) && TARGET_OS_MAC
-
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
-
-/* These are for comparing mtime and ctime in a portable way */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#elif defined(__linux__)
-
-/* These are the Linux versions, note the difference in members names */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctim, s2.st_ctim)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtim, s2.st_mtim)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(pthread_self(), \
-							   NAME)
-
-#elif defined(__unix__)
-
-/*
- * For now what is here in __unix__ is just copies of whatever is in the mac
- * section but that's just because at this point I have not tried with the
- * other unices, so this section is kind of a placeholder. I assume that many
- * would resemble macOS more than Linux.
- */
-
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
-
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#else /* __unix__ */
-#error "Unknown Operating system"
-#endif
-
-#endif /* MISC_OSAPI_H */

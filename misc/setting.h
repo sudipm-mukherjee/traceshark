@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2018-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015, 2018-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -72,9 +72,9 @@ class Setting
 public:
 	typedef enum Index : int {
 		SHOW_SCHED_GRAPHS = 0,
-		HORIZONTAL_WAKEUP,
-		VERTICAL_WAKEUP,
-		MAX_VRT_WAKEUP_LATENCY,
+		HORIZONTAL_LATENCY,
+		VERTICAL_LATENCY,
+		MAX_VRT_LATENCY,
 		SHOW_CPUFREQ_GRAPHS,
 		SHOW_CPUIDLE_GRAPHS,
 		SHOW_MIGRATION_GRAPHS,
@@ -90,6 +90,18 @@ public:
 		MAINWINDOW_WIDTH,
 		SAVE_WINDOW_SIZE_EXIT,
 		NR_SETTINGS,
+
+		/*
+		 * Deprecated settings, kept for .traceshark file
+		 * compatibility. These should only be read in the
+		 * SettingStore::handleOlderVersion() function and not be used
+		 * anywhere else.
+		 */
+		HORIZONTAL_WAKEUP,
+		VERTICAL_WAKEUP,
+		MAX_VRT_WAKEUP_LATENCY,
+
+		NR_ALL_SETTINGS,
 	} index_t;
         class Value;
 	class Dependency;
