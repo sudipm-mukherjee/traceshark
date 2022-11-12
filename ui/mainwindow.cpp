@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -51,6 +51,7 @@
  */
 
 #include <cstdio>
+#include <cstring>
 
 #include <QApplication>
 #include <QDateTime>
@@ -66,6 +67,7 @@
 #include "ui/errordialog.h"
 #include "ui/graphenabledialog.h"
 #include "ui/infowidget.h"
+#include "ui/latencywidget.h"
 #include "ui/licensedialog.h"
 #include "ui/mainwindow.h"
 #include "ui/migrationline.h"
@@ -117,6 +119,12 @@
 
 #define TOOLTIP_SHOWTASKS		\
 "Show a list of all tasks and it's possible to select one"
+
+#define TOOLTIP_SHOWSCHEDLATENCIES		\
+"Shows a list of scheduling latencies and it's possible to select one"
+
+#define TOOLTIP_SHOWWAKELATENCIES		\
+"Shows a list of wakeup latencies and it's possible to select one"
 
 #define TOOLTIP_SHOWARGFILTER		\
 "Show a dialog for filtering the info field with POSIX regular expressions"
@@ -254,7 +262,8 @@ const QColor MainWindow::UNINT_COLOR = QColor(205, 0, 205);
 
 MainWindow::MainWindow():
 	tracePlot(nullptr), scrollBarUpdate(false), graphEnableDialog(nullptr),
-	filterActive(false)
+	filterActive(false), foptions(QFileDialog::DontUseNativeDialog |
+				      QFileDialog::DontUseSheet)
 {
 	createAboutBox();
 	createAboutQCustomPlot();
@@ -418,6 +427,8 @@ void MainWindow::closeEvent(QCloseEvent *event)
 	cpuSelectDialog->hide();
 	statsDialog->hide();
 	statsLimitedDialog->hide();
+	schedLatencyWidget->hide();
+	wakeupLatencyWidget->hide();
 	if (settingStore->getValue(Setting::SAVE_WINDOW_SIZE_EXIT).boolv()) {
 		wt = width();
 		ht = height();
@@ -436,12 +447,10 @@ void MainWindow::openTrace()
 {
 	QString name;
 	QString caption = tr("Open a trace file");
-	QFileDialog::Options options = QFileDialog::DontUseNativeDialog |
-		QFileDialog::DontUseSheet;
 
 	name = QFileDialog::getOpenFileName(this, caption, QString(),
 					    tr("ASCII (*.asc *.txt)"), nullptr,
-					    options);
+					    foptions);
 	if (!name.isEmpty()) {
 		openFile(name);
 	}
@@ -514,6 +523,9 @@ void MainWindow::openFile(const QString &name)
 		statsLimitedDialog->setTaskMap(&analyzer->taskMap,
 					       analyzer->getNrCPUs());
 		statsLimitedDialog->endResetModel();
+
+		schedLatencyWidget->setAnalyzer(analyzer);
+		wakeupLatencyWidget->setAnalyzer(analyzer);
 
 		showTrace();
 		showt = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
@@ -653,10 +665,10 @@ void MainWindow::rescaleTrace()
 {
 	int maxwakeup;
 	const Setting::Value &maxvalue =
-		settingStore->getValue(Setting::MAX_VRT_WAKEUP_LATENCY);
+		settingStore->getValue(Setting::MAX_VRT_LATENCY);
 
 	maxwakeup = maxvalue.intv();
-	CPUTask::setVerticalWakeupMAX(maxwakeup);
+	CPUTask::setVerticalDelayMAX(maxwakeup);
 	analyzer->doScale();
 }
 
@@ -920,7 +932,7 @@ void MainWindow::addSchedGraph(CPUTask &cpuTask, unsigned int cpu)
 
 void MainWindow::addHorizontalWakeupGraph(CPUTask &task)
 {
-	if (!settingStore->getValue(Setting::HORIZONTAL_WAKEUP).boolv())
+	if (!settingStore->getValue(Setting::HORIZONTAL_LATENCY).boolv())
 		return;
 
 	/* Add wakeup graph on top of scheduling */
@@ -938,8 +950,8 @@ void MainWindow::addHorizontalWakeupGraph(CPUTask &task)
 	graph->setScatterStyle(style);
 	graph->setLineStyle(QCPGraph::lsNone);
 	graph->setAdaptiveSampling(true);
-	graph->setData(task.wakeTimev, task.wakeHeight);
-	errorBars->setData(task.wakeDelay, task.wakeZero);
+	graph->setData(task.delayTimev, task.delayHeight);
+	errorBars->setData(task.delay, task.delayZero);
 	errorBars->setErrorType(QCPErrorBars::etKeyError);
 	errorBars->setPen(pen);
 	errorBars->setWhiskerWidth(4);
@@ -949,7 +961,7 @@ void MainWindow::addHorizontalWakeupGraph(CPUTask &task)
 
 void MainWindow::addWakeupGraph(CPUTask &task)
 {
-	if (!settingStore->getValue(Setting::VERTICAL_WAKEUP).boolv())
+	if (!settingStore->getValue(Setting::VERTICAL_LATENCY).boolv())
 		return;
 
 	/* Add wakeup graph on top of scheduling */
@@ -968,8 +980,8 @@ void MainWindow::addWakeupGraph(CPUTask &task)
 	graph->setScatterStyle(style);
 	graph->setLineStyle(QCPGraph::lsNone);
 	graph->setAdaptiveSampling(true);
-	graph->setData(task.wakeTimev, task.wakeHeight);
-	errorBars->setData(task.wakeZero, task.verticalDelay);
+	graph->setData(task.delayTimev, task.delayHeight);
+	errorBars->setData(task.delayZero, task.verticalDelay);
 	errorBars->setErrorType(QCPErrorBars::etValueError);
 	errorBars->setPen(pen);
 	errorBars->setWhiskerWidth(4);
@@ -1050,6 +1062,8 @@ void MainWindow::setTraceActionsEnabled(bool e)
 	timeFilterAction->setEnabled(e);
 	showStatsAction->setEnabled(e);
 	showStatsTimeLimitedAction->setEnabled(e);
+	showSchedLatencyAction->setEnabled(e);
+	showWakeupLatencyAction->setEnabled(e);
 }
 
 void MainWindow::setLegendActionsEnabled(bool e)
@@ -1145,6 +1159,9 @@ void MainWindow::closeTrace()
 	cpuSelectDialog->setNrCPUs(0);
 	cpuSelectDialog->endResetModel();
 
+	schedLatencyWidget->clear();
+	wakeupLatencyWidget->clear();
+
 	mresett = QDateTime::currentDateTimeUtc().toMSecsSinceEpoch();
 
 	clearPlot();
@@ -1201,7 +1218,6 @@ void MainWindow::saveScreenshot()
 	QString pdfCreator = QString("traceshark ");
 	QString pdfTitle;
 	QString diagcapt;
-	QFileDialog::Options options;
 
 	pdfCreator += QString(TRACESHARK_VERSION_STRING);
 
@@ -1223,10 +1239,9 @@ void MainWindow::saveScreenshot()
 	pdfTitle += pdfCreator;
 
 	diagcapt = tr("Save screenshot to image");
-	options = QFileDialog::DontUseNativeDialog | QFileDialog::DontUseSheet;
 	fileName = QFileDialog::getSaveFileName(this, diagcapt, QString(),
 						tr("Images (*.png *.bmp *.jpg *.pdf)"),
-						nullptr, options);
+						nullptr, foptions);
 	if (fileName.isEmpty())
 		return;
 
@@ -1305,7 +1320,7 @@ void MainWindow::createAboutBox()
 	       "</p>"
 		).arg(QLatin1String(TRACESHARK_VERSION_STRING));
 	textAbout = QMessageBox::tr(
-	       "<p>Copyright &copy; 2014-2021 Viktor Rosendahl<p>"
+	       "<p>Copyright &copy; 2014-2022 Viktor Rosendahl<p>"
 	       "<p>This program comes with ABSOLUTELY NO WARRANTY; details below.</p>"
 	       "<p>This is free software, and you are welcome to redistribute it"
 	       " under certain conditions; select \"License\" under the \"Help\""
@@ -1363,6 +1378,12 @@ void MainWindow::createAboutQCustomPlot()
 {
 	QString textAboutCaption;
 	QString textAbout;
+	QString years = tr("2011-2021");
+
+	if (!strcmp(QCUSTOMPLOT_VERSION_STR, "2.0.1"))
+		years = tr("2011-2018");
+	else if (!strcmp(QCUSTOMPLOT_VERSION_STR, "2.0.0"))
+		years = tr("2011-2017");
 
 	textAboutCaption = QMessageBox::tr(
 	       "<h1>About QCustomPlot</h1>"
@@ -1373,15 +1394,16 @@ void MainWindow::createAboutQCustomPlot()
 #endif
 		).arg(QLatin1String(QCUSTOMPLOT_VERSION_STR));
 	textAbout = QMessageBox::tr(
-	       "<p>Copyright &copy; 2011-2018 Emanuel Eichhammer"
+	       "<p>Copyright &copy; %1 Emanuel Eichhammer"
 	       "<p>QCustomPlot is licensed under GNU General Public License as "
 	       "published by the Free Software Foundation, either version 3 of "
 	       " the License, or (at your option) any later version.</p>"
-	       "<p>See <a href=\"%1/\">%1</a> for more information about QCustomPlot.</p>"
+	       "<p>See <a href=\"%2/\">%2</a> for more information about QCustomPlot.</p>"
 	       "<p>This program comes with ABSOLUTELY NO WARRANTY; select \"License\" under the \"Help\""
 	       " menu for details."
 	       "<p>This is free software, and you are welcome to redistribute it"
-	       " under certain conditions; see the license for details.").arg(QLatin1String("http://qcustomplot.com"));
+	       " under certain conditions; see the license for details.").arg(
+		       years).arg(QLatin1String("http://qcustomplot.com"));
 	aboutQCPBox = new QMessageBox(this);
 	aboutQCPBox->setWindowTitle(tr("About QCustomPlot"));
 	aboutQCPBox->setText(textAboutCaption);
@@ -1581,6 +1603,59 @@ void MainWindow::taskTriggered(int pid)
 	selectTaskByPid(pid, nullptr, PR_TRY_TASKGRAPH);
 }
 
+void MainWindow::showLatency(const Latency *latency)
+{
+	int activeIdx = infoWidget->getCursorIdx();
+	int inactiveIdx;
+	unsigned int lcpu;
+	int lpid;
+
+	inactiveIdx = TShark::RED_CURSOR;
+	if (activeIdx == inactiveIdx)
+		inactiveIdx = TShark::BLUE_CURSOR;
+
+	Cursor *activeCursor = cursors[activeIdx];
+	Cursor *inactiveCursor = cursors[inactiveIdx];
+
+	const TraceEvent &schedevent = analyzer->events->at(latency->sched_idx);
+	const TraceEvent &wakeupevent =
+		analyzer->events->at(latency->runnable_idx);
+
+	/*
+	 * This is what we do, we move the *active* cursor to the wakeup
+	 * event, move the *inactive* cursor to the scheduling event and then
+	 * finally scroll the events widget to the same time and highlight
+	 * the task that was doing the wakeup. This way we can push the button
+	 * again to see who woke up the task that was doing the wakeup
+	 */
+	activeCursor->setPosition(wakeupevent.time);
+	inactiveCursor->setPosition(schedevent.time);
+	checkStatsTimeLimited();
+	infoWidget->setTime(wakeupevent.time, activeIdx);
+	infoWidget->setTime(schedevent.time, inactiveIdx);
+	cursorPos[activeIdx] = wakeupevent.time.toDouble();
+	cursorPos[inactiveIdx] = schedevent.time.toDouble();
+
+	if (!analyzer->isFiltered()) {
+		eventsWidget->scrollTo(latency->runnable_idx);
+	} else {
+		/*
+		 * If a filter is enabled we need to try to find the index in
+		 * analyzer->filteredEvents
+		 */
+		int filterIndex;
+		if (analyzer->findFilteredEvent(latency->runnable_idx,
+						&filterIndex)
+		    != nullptr)
+			eventsWidget->scrollTo(filterIndex);
+	}
+
+	lcpu = schedevent.cpu;
+	lpid = latency->pid;
+
+	selectTaskByPid(lpid, &lcpu, PR_TRY_TASKGRAPH);
+}
+
 void MainWindow::handleEventSelected(const TraceEvent *event)
 {
 	if (event == nullptr) {
@@ -1627,6 +1702,20 @@ void MainWindow::createActions()
 	saveAction->setShortcuts(QKeySequence::SaveAs);
 	saveAction->setToolTip(tr(TOOLTIP_SAVESCREEN));
 	tsconnect(saveAction, triggered(), this, saveScreenshot());
+
+	showSchedLatencyAction = new QAction(tr("Show scheduling latencies..."),
+					     this);
+	showSchedLatencyAction->setIcon(QIcon(RESSRC_GPH_LATENCY));
+	showSchedLatencyAction->setToolTip(tr(TOOLTIP_SHOWSCHEDLATENCIES));
+	tsconnect(showSchedLatencyAction, triggered(), this,
+		  showSchedLatencyWidget());
+
+	showWakeupLatencyAction = new QAction(tr("Show wakeup latencies..."),
+					      this);
+	showWakeupLatencyAction->setIcon(QIcon(RESSRC_GPH_WAKEUP_LATENCY));
+	showWakeupLatencyAction->setToolTip(tr(TOOLTIP_SHOWWAKELATENCIES));
+	tsconnect(showWakeupLatencyAction, triggered(), this,
+		  showWakeupLatencyWidget());
 
 	showTasksAction = new QAction(tr("Show task &list..."), this);
 	showTasksAction->setIcon(QIcon(RESSRC_GPH_TASKSELECT));
@@ -1862,6 +1951,8 @@ void MainWindow::createToolBars()
 	viewToolBar->addAction(defaultZoomAction);
 	viewToolBar->addAction(fullZoomAction);
 	viewToolBar->addAction(verticalZoomAction);
+	viewToolBar->addAction(showSchedLatencyAction);
+	viewToolBar->addAction(showWakeupLatencyAction);
 	viewToolBar->addAction(showTasksAction);
 	viewToolBar->addAction(filterCPUsAction);
 	viewToolBar->addAction(showEventsAction);
@@ -1911,6 +2002,8 @@ void MainWindow::createMenus()
 	viewMenu->addAction(defaultZoomAction);
 	viewMenu->addAction(fullZoomAction);
 	viewMenu->addAction(verticalZoomAction);
+	viewMenu->addAction(showSchedLatencyAction);
+	viewMenu->addAction(showWakeupLatencyAction);
 	viewMenu->addAction(showTasksAction);
 	viewMenu->addAction(filterCPUsAction);
 	viewMenu->addAction(showEventsAction);
@@ -1985,6 +2078,12 @@ void MainWindow::createDialogs()
 	cpuSelectDialog = new CPUSelectDialog(this);
 	graphEnableDialog = new GraphEnableDialog(settingStore, this);
 	regexDialog = new RegexDialog(this);
+	schedLatencyWidget = new LatencyWidget(tr("Scheduling Latencies"),
+					       Latency::TYPE_SCHED, this);
+	schedLatencyWidget->setAllowedAreas(Qt::RightDockWidgetArea);
+	wakeupLatencyWidget = new LatencyWidget(tr("Wakeup Latencies"),
+						Latency::TYPE_WAKEUP, this);
+	wakeupLatencyWidget->setAllowedAreas(Qt::LeftDockWidgetArea);
 
 	vtl::set_error_handler(errorDialog);
 }
@@ -2095,6 +2194,24 @@ void MainWindow::dialogConnections()
 	tsconnect(regexDialog, createFilter(RegexFilter &, bool),
 		  this, createRegexFilter(RegexFilter &, bool));
 	tsconnect(regexDialog, resetFilter(), this, resetRegexFilter());
+
+	/* sched latency widget */
+	tsconnect(schedLatencyWidget,
+		  latencyDoubleClicked(const Latency *),
+		  this, showLatency(const Latency *));
+	tsconnect(schedLatencyWidget, QDockWidgetNeedsRemoval(QDockWidget *),
+		  this, removeQDockWidget(QDockWidget*));
+	tsconnect(schedLatencyWidget, exportRequested(int),
+		  this, exportSchedLatencies(int));
+
+	/* wakeup latency widget */
+	tsconnect(wakeupLatencyWidget,
+		  latencyDoubleClicked(const Latency *),
+		  this, showLatency(const Latency *));
+	tsconnect(wakeupLatencyWidget, QDockWidgetNeedsRemoval(QDockWidget *),
+		  this, removeQDockWidget(QDockWidget*));
+	tsconnect(wakeupLatencyWidget, exportRequested(int),
+		  this, exportWakeupLatencies(int));
 }
 
 void MainWindow::setStatus(status_t status, const QString *fileName)
@@ -2406,7 +2523,6 @@ void MainWindow::exportEvents(TraceAnalyzer::exporttype_t export_type)
 	QString fileName;
 	int ts_errno;
 	QString caption;
-	QFileDialog::Options options;
 
 	if (analyzer->events->size() <= 0) {
 		vtl::warnx("The trace is empty. There is nothing to export");
@@ -2430,10 +2546,9 @@ void MainWindow::exportEvents(TraceAnalyzer::exporttype_t export_type)
 		break;
 	}
 
-	options = QFileDialog::DontUseNativeDialog | QFileDialog::DontUseSheet;
 	fileName = QFileDialog::getSaveFileName(this, caption, QString(),
 						tr("ASCII Text (*.asc *.txt)"),
-						nullptr, options);
+						nullptr, foptions);
 	if (fileName.isEmpty())
 		return;
 
@@ -2452,6 +2567,88 @@ void MainWindow::exportCPUTriggered()
 void MainWindow::exportEventsTriggered()
 {
 	exportEvents(TraceAnalyzer::EXPORT_TYPE_ALL);
+}
+
+void MainWindow::exportSchedLatencies(int format)
+{
+	exportLatencies((TraceAnalyzer::exportformat_t)format,
+			TraceAnalyzer::LATENCY_SCHED);
+}
+
+void MainWindow::exportWakeupLatencies(int format)
+{
+	exportLatencies((TraceAnalyzer::exportformat_t)format,
+			TraceAnalyzer::LATENCY_WAKEUP);
+}
+
+void MainWindow::exportLatencies(TraceAnalyzer::exportformat_t format,
+				 TraceAnalyzer::latencytype_t type)
+{
+	QString caption;
+	QString fileName;
+	int ts_errno;
+	QString ascfilter = tr("ASCII Text (*.txt)");
+	QString csvfilter = tr("CSV (*.csv)");
+	QString fsep = QString(";;");
+	QString selected;
+	QString filter;
+	TraceAnalyzer::exportformat_t override_fmt = format;
+
+	/*
+	 * The first filter will be the default one displayed by the
+	 * QFileDialog::getSaveFileName() dialog. The "format" variable contains
+	 * the format selected in LatencyWidget. So based on this we select the
+	 * default format by arranging the order of the filter string. The user
+	 * still have the option to select another format. This will be recorded
+	 * in the "selected" variable.
+	 */
+	switch (format) {
+	case TraceAnalyzer::EXPORT_ASCII:
+		filter = ascfilter + fsep + csvfilter;
+		break;
+	case TraceAnalyzer::EXPORT_CSV:
+		filter = csvfilter + fsep + ascfilter;
+		break;
+	default:
+		vtl::warn(TS_ERROR_INTERNAL, "Unknown file format");
+		return;
+	}
+
+	switch (type) {
+	case TraceAnalyzer::LATENCY_WAKEUP:
+		caption = tr("Export the wakeup latencies");
+		break;
+	case TraceAnalyzer::LATENCY_SCHED:
+		caption = tr("Export the scheduling latencies");
+		break;
+	default:
+		vtl::warn(TS_ERROR_INTERNAL, "Unknown latency type");
+		return;
+	}
+
+	fileName = QFileDialog::getSaveFileName(this, caption, QString(),
+						filter, &selected, foptions);
+
+	if (fileName.isEmpty())
+		return;
+
+	/*
+	 * The purpose of this override_fmt is to allow the user to select
+	 * another format in the dialog provided by
+	 * QFileDialog::getSaveFileName(). This will override the originally
+	 * selected format in the LatencyWidget widget.
+	 */
+	if (selected == ascfilter)
+		override_fmt = TraceAnalyzer::EXPORT_ASCII;
+	else if (selected == csvfilter)
+		override_fmt = TraceAnalyzer::EXPORT_CSV;
+
+	if (!analyzer->exportLatencies(override_fmt, type,
+				       fileName.toLocal8Bit().data(),
+				       &ts_errno))
+		vtl::warn(ts_errno, "Failed to export latencies to %s",
+			  fileName.toLocal8Bit().data());
+
 }
 
 void MainWindow::consumeSettings()
@@ -2530,7 +2727,7 @@ void MainWindow::consumeSettings()
 			 */
 			delete task->graph;
 			task->graph = nullptr;
-			task->wakeUpGraph = nullptr;
+			task->delayGraph = nullptr;
 			task->runningGraph = nullptr;
 			task->preemptedGraph = nullptr;
 			task->uninterruptibleGraph = nullptr;
@@ -2649,7 +2846,7 @@ void MainWindow::addTaskGraph(int pid)
 	task->offset = taskRange->lower;
 	task->scale = schedHeight;
 	task->doScale();
-	task->doScaleWakeup();
+	task->doScaleDelay();
 	task->doScaleRunning();
 	task->doScalePreempted();
 	task->doScaleUnint();
@@ -2668,13 +2865,13 @@ void MainWindow::addTaskGraph(int pid)
 	graph->setScatterStyle(style);
 	graph->setLineStyle(QCPGraph::lsNone);
 	graph->setAdaptiveSampling(true);
-	graph->setData(task->wakeTimev, task->wakeHeight);
-	errorBars->setData(task->wakeDelay, task->wakeZero);
+	graph->setData(task->delayTimev, task->delayHeight);
+	errorBars->setData(task->delay, task->delayZero);
 	errorBars->setErrorType(QCPErrorBars::etKeyError);
 	errorBars->setPen(pen);
 	errorBars->setWhiskerWidth(4);
 	errorBars->setDataPlottable(graph);
-	task->wakeUpGraph = graph;
+	task->delayGraph = graph;
 
 	addStillRunningTaskGraph(task);
 	addPreemptedTaskGraph(task);
@@ -2772,9 +2969,9 @@ void MainWindow::removeTaskGraph(int pid)
 		task->graph = nullptr;
 	}
 
-	if (task->wakeUpGraph != nullptr) {
-		tracePlot->removeGraph(task->wakeUpGraph);
-		task->wakeUpGraph = nullptr;
+	if (task->delayGraph != nullptr) {
+		tracePlot->removeGraph(task->delayGraph);
+		task->delayGraph = nullptr;
 	}
 
 	if (task->runningGraph != nullptr) {
@@ -2829,9 +3026,9 @@ void MainWindow::clearTaskGraphsTriggered()
 		task->graph->destroy();
 		task->graph = nullptr;
 
-		if (task->wakeUpGraph != nullptr) {
-			tracePlot->removeGraph(task->wakeUpGraph);
-			task->wakeUpGraph = nullptr;
+		if (task->delayGraph != nullptr) {
+			tracePlot->removeGraph(task->delayGraph);
+			task->delayGraph = nullptr;
 		}
 
 		if (task->runningGraph != nullptr) {
@@ -2920,6 +3117,43 @@ void MainWindow::showTaskSelector()
 
 	if (dockWidgetArea(statsDialog) == Qt::LeftDockWidgetArea)
 		tabifyDockWidget(statsDialog, taskSelectDialog);
+	else if (dockWidgetArea(wakeupLatencyWidget) == Qt::LeftDockWidgetArea)
+		tabifyDockWidget(wakeupLatencyWidget, taskSelectDialog);
+}
+
+void MainWindow::showSchedLatencyWidget()
+{
+	showLatencyWidget(schedLatencyWidget, Qt::RightDockWidgetArea);
+}
+
+void MainWindow::showWakeupLatencyWidget()
+{
+	showLatencyWidget(wakeupLatencyWidget, Qt::LeftDockWidgetArea);
+}
+
+void MainWindow::showLatencyWidget(LatencyWidget *lwidget,
+				   Qt::DockWidgetArea area)
+{
+	if (lwidget->isVisible()) {
+		lwidget->hide();
+		return;
+	}
+
+	lwidget->show();
+
+	if (dockWidgetArea(lwidget) == Qt::NoDockWidgetArea)
+		addDockWidget(area, lwidget);
+
+	if (area == Qt::RightDockWidgetArea) {
+		if (dockWidgetArea(statsLimitedDialog)
+		    == Qt::RightDockWidgetArea)
+			tabifyDockWidget(statsLimitedDialog, lwidget);
+	} else if (area ==  Qt::LeftDockWidgetArea) {
+		if (dockWidgetArea(taskSelectDialog) == Qt::LeftDockWidgetArea)
+			tabifyDockWidget(taskSelectDialog, lwidget);
+		else if (dockWidgetArea(statsDialog) == Qt::LeftDockWidgetArea)
+			tabifyDockWidget(statsDialog, lwidget);
+	}
 }
 
 void MainWindow::filterOnCPUs()
@@ -2966,6 +3200,8 @@ void MainWindow::showStats()
 
 	if (dockWidgetArea(taskSelectDialog) == Qt::LeftDockWidgetArea)
 		tabifyDockWidget(taskSelectDialog, statsDialog);
+	else if (dockWidgetArea(wakeupLatencyWidget) == Qt::LeftDockWidgetArea)
+		tabifyDockWidget(wakeupLatencyWidget, statsDialog);
 }
 
 void MainWindow::showStatsTimeLimited()
@@ -2982,6 +3218,9 @@ void MainWindow::showStatsTimeLimited()
 	statsLimitedDialog->show();
 	if (dockWidgetArea(statsLimitedDialog) == Qt::NoDockWidgetArea)
 		addDockWidget(Qt::RightDockWidgetArea, statsLimitedDialog);
+
+	if (dockWidgetArea(schedLatencyWidget) == Qt::RightDockWidgetArea)
+		tabifyDockWidget(schedLatencyWidget, statsLimitedDialog);
 }
 
 void MainWindow::removeQDockWidget(QDockWidget *widget)

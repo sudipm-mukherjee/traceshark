@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -86,6 +86,12 @@ public:
 	bool forkname;
 };
 
+typedef enum RunStatus : int {
+	RUN_STATUS_INVALID = 0,
+	RUN_STATUS_WAKEUP,
+	RUN_STATUS_SCHED
+} runstatus_t;
+
 class Task : public AbstractTask {
 public:
 	Task();
@@ -98,8 +104,10 @@ public:
 	TaskName     *taskName;
 	exitstatus_t exitStatus;
 
-	/* lastWakeUP is only used during extraction */
-	vtl::Time    lastWakeUP;
+	/* lastRunnable is only used during extraction */
+	vtl::Time    lastRunnable;
+	int          lastRunnable_idx;
+	runstatus_t  lastRunnable_status;
 
 	vtl::Time    lastSleepEntry;
 
@@ -108,7 +116,7 @@ public:
 	 * can be deleted when the user requests the unified task to be 
 	 * removed
 	 */
-	QCPGraph     *wakeUpGraph;
+	QCPGraph     *delayGraph;
 	QCPGraph     *preemptedGraph;
 	QCPGraph     *runningGraph;
 	QCPGraph     *uninterruptibleGraph;
@@ -131,6 +139,7 @@ vtl_always_inline Task &TaskHandle::getTask()
 		task = new Task;
 	return *task;
 }
+
 /*
  * If the name is not the newest name and is "forkname", then we will will
  * surrount it with {}. If the name is not the newest and not a forkname,

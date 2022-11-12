@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -53,6 +53,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QFileDialog>
 #include <QMainWindow>
 #include <QMap>
 #include <QVector>
@@ -104,6 +105,7 @@ class Cursor;
 class CPUTask;
 class ErrorDialog;
 class GraphEnableDialog;
+class LatencyWidget;
 class LicenseDialog;
 class EventInfoDialog;
 class QCPAbstractPlottable;
@@ -156,6 +158,7 @@ private slots:
 	void handleEventDoubleClicked(EventsModel::column_t col,
 				      const TraceEvent &event);
 	void taskTriggered(int pid);
+	void showLatency(const Latency *latency);
 	void handleEventSelected(const TraceEvent *event);
 	void handleEventChanged(bool selected);
 	void selectionChanged();
@@ -171,6 +174,10 @@ private slots:
 	void defaultZoom();
 	void fullZoom();
 	void verticalZoom();
+	void showSchedLatencyWidget();
+	void showWakeupLatencyWidget();
+	void showLatencyWidget(LatencyWidget *lwidget,
+			       Qt::DockWidgetArea area);
 	void showTaskSelector();
 	void filterOnCPUs();
 	void showArgFilter();
@@ -192,6 +199,8 @@ private slots:
 	void exportEvents(TraceAnalyzer::exporttype_t export_type);
 	void exportEventsTriggered();
 	void exportCPUTriggered();
+	void exportSchedLatencies(int format);
+	void exportWakeupLatencies(int format);
 	void consumeSettings();
 	void consumeFilterSettings();
 	void consumeSizeChange();
@@ -303,6 +312,8 @@ private:
 	void setEventActionsEnabled(bool e);
 	void setEventsWidgetEvents();
 	void scrollTo(const vtl::Time &time);
+	void exportLatencies(TraceAnalyzer::exportformat_t format,
+			     TraceAnalyzer::latencytype_t type);
 	void handleLegendGraphDoubleClick(QCPGraph *legendGraph);
 	void handleWakeUpChanged(bool selected);
 	void checkStatsTimeLimited();
@@ -349,6 +360,8 @@ private:
 	QAction *fullZoomAction;
 	QAction *verticalZoomAction;
 	QAction *showTasksAction;
+	QAction *showSchedLatencyAction;
+	QAction *showWakeupLatencyAction;
 	QAction *filterCPUsAction;
 	QAction *showEventsAction;
 	QAction *showArgFilterAction;
@@ -392,6 +405,8 @@ private:
 	TaskSelectDialog *taskSelectDialog;
 	TaskSelectDialog *statsDialog;
 	TaskSelectDialog *statsLimitedDialog;
+	LatencyWidget *schedLatencyWidget;
+	LatencyWidget *wakeupLatencyWidget;
 	EventSelectDialog *eventSelectDialog;
 	CPUSelectDialog *cpuSelectDialog;
 	GraphEnableDialog *graphEnableDialog;
@@ -446,6 +461,7 @@ private:
 	QMap<event_t, event_t> eventTypeMap;
 	QMessageBox *aboutBox;
 	QMessageBox *aboutQCPBox;
+	QFileDialog::Options foptions;
 };
 
 #endif /* MAINWINDOW_H */

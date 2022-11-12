@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2020, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -50,69 +50,74 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MISC_OSAPI_H
-#define MISC_OSAPI_H
+#ifndef LATENCYCOMPFUNC_H
+#define LATENCYCOMPFUNC_H
 
-#include <cstring>
+#include "analyzer/latency.h"
+#include "analyzer/task.h"
+#include "analyzer/traceanalyzer.h"
 
-extern "C" {
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-}
+class LatencyCompFunc
+{
+public:
+	LatencyCompFunc(Latency::compare_t cmp,
+			Latency::order_t ord,
+			TraceAnalyzer *azr) :
+		compare(cmp), order(ord), analyzer(azr) {}
+	int operator() (const Latency &ll, const Latency &rl) {
+		int r;
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
+		if (compare == Latency::CMP_NAME) {
+			r = pidToName(ll.pid).compare(pidToName(rl.pid));
+			if (r == 0)
+				r = ll.place - rl.place;
+		} else if (compare == Latency::CMP_TIME) {
+			r = ll.time.compare(rl.time);
+			if (r == 0)
+				r = ll.place - rl.place;
+		} else if (compare == Latency::CMP_DELAY) {
+			/*
+			 * Here we should really compare the delay first but
+			 * since that since place has been generated with the
+			 * Latency::CMP_CREATE_PLACE below, it is not necessary.
+			 */
+			r = ll.place - rl.place;
+		} else if (compare == Latency::CMP_PLACE) {
+			r = ll.place - rl.place;
+		} else if (compare == Latency::CMP_CREATE_PLACE) {
+			/*
+			 * This is only needed for the purpose of sorting the
+			 * latency array when we create the place member.
+			 */
+			r = ll.delay.rcompare(rl.delay);
+			if (r == 0) {
+				r = ll.time.compare(rl.time);
+				if (r == 0)
+					r = pidToName(ll.pid).compare(
+						pidToName(rl.pid));
+			}
+		} else {
+			return 0;
+		}
+
+		if (order == Latency::ORDER_REVERSE)
+			r = -r;
+		return r;
+	}
+
+private:
+	const QString &pidToName(int pid) {
+		Task *task = analyzer->findTask(pid);
+
+		if (task == nullptr)
+			return dummystr;
+		else
+			return *task->displayName;
+	}
+	Latency::compare_t compare;
+	Latency::order_t order;
+	TraceAnalyzer *analyzer;
+	static const QString dummystr;
+};
+
 #endif
-
-/*
- * bzero() was removed from IEEE Std 1003.1-2008 (``POSIX.1'') and some
- * implementations remove bzero() if we have defined _POSIX_C_SOURCE=200809L
- */
-#define tshark_bzero(ADDR, SIZE) ((void)memset(ADDR, 0, SIZE))
-
-#if defined(__APPLE__) && TARGET_OS_MAC
-
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
-
-/* These are for comparing mtime and ctime in a portable way */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#elif defined(__linux__)
-
-/* These are the Linux versions, note the difference in members names */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctim, s2.st_ctim)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtim, s2.st_mtim)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(pthread_self(), \
-							   NAME)
-
-#elif defined(__unix__)
-
-/*
- * For now what is here in __unix__ is just copies of whatever is in the mac
- * section but that's just because at this point I have not tried with the
- * other unices, so this section is kind of a placeholder. I assume that many
- * would resemble macOS more than Linux.
- */
-
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
-
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#else /* __unix__ */
-#error "Unknown Operating system"
-#endif
-
-#endif /* MISC_OSAPI_H */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2020, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2021, 2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -50,69 +50,71 @@
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MISC_OSAPI_H
-#define MISC_OSAPI_H
+#ifndef _LATENCYMODEL_H
+#define _LATENCYMODEL_H
 
-#include <cstring>
+#include <QAbstractTableModel>
+#include "analyzer/latency.h"
 
-extern "C" {
-#include <pthread.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
+namespace vtl {
+	template<class T> class TList;
 }
 
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#endif
+class Latency;
+class TraceAnalyzer;
 
-/*
- * bzero() was removed from IEEE Std 1003.1-2008 (``POSIX.1'') and some
- * implementations remove bzero() if we have defined _POSIX_C_SOURCE=200809L
- */
-#define tshark_bzero(ADDR, SIZE) ((void)memset(ADDR, 0, SIZE))
+class LatencyModel : public QAbstractTableModel
+{
+	Q_OBJECT
+public:
+	typedef enum : int {
+		COLUMN_PID = 0,
+		COLUMN_TASKNAME,
+		COLUMN_TIME,
+		COLUMN_DELAY,
+		COLUMN_PLACE,
+		COLUMN_PERCENT,
+		NR_COLUMNS
+	} column_t;
+	LatencyModel(enum Latency::Type type, QObject *parent = 0);
+	~LatencyModel();
+	void setAnalyzer(TraceAnalyzer *azr);
+	void clear();
+	int rowCount(const QModelIndex &parent) const;
+	int columnCount(const QModelIndex &parent) const;
+	QVariant data(const QModelIndex &index, int role) const;
+	bool setData(const QModelIndex &index, const QVariant &value,
+		     int role);
+	QVariant headerData(int section, Qt::Orientation orientation,
+			    int role) const;
+	int rowToPid(int row, bool &ok) const;
+	const QString &rowToName(int row, bool &ok) const;
+	const Latency *rowToLatency(int row) const;
+	Qt::ItemFlags flags(const QModelIndex &index) const;
+	static vtl_always_inline column_t int_to_column(int i);
+	static vtl_always_inline int column_to_int(column_t c);
+	vtl_always_inline enum Latency::Type getLatencyType() const;
+private:
+	int getSize() const;
+	QString placeToPct(unsigned int place) const;
+	enum Latency::Type latency_type;
+	vtl::TList<Latency> *latencies;
+	TraceAnalyzer *analyzer;
+};
 
-#if defined(__APPLE__) && TARGET_OS_MAC
+vtl_always_inline LatencyModel::column_t LatencyModel::int_to_column(int i)
+{
+	return (column_t) i;
+}
 
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
+vtl_always_inline int LatencyModel::column_to_int(LatencyModel::column_t c)
+{
+	return (int) c;
+}
 
-/* These are for comparing mtime and ctime in a portable way */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
+vtl_always_inline enum Latency::Type LatencyModel::getLatencyType() const
+{
+	return latency_type;
+}
 
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#elif defined(__linux__)
-
-/* These are the Linux versions, note the difference in members names */
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctim, s2.st_ctim)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtim, s2.st_mtim)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(pthread_self(), \
-							   NAME)
-
-#elif defined(__unix__)
-
-/*
- * For now what is here in __unix__ is just copies of whatever is in the mac
- * section but that's just because at this point I have not tried with the
- * other unices, so this section is kind of a placeholder. I assume that many
- * would resemble macOS more than Linux.
- */
-
-#define lseek64(FD, OFFSET, WHENCE) lseek(FD, OFFSET, WHENCE)
-
-#define cmp_ctimespec(s1, s2) TShark::cmp_timespec(s1.st_ctimespec,	\
-						   s2.st_ctimespec)
-#define cmp_mtimespec(s1, s2) TShark::cmp_timespec(s1.st_mtimespec,	\
-						   s2.st_mtimespec)
-
-#define tshark_pthread_setname_np(NAME) pthread_setname_np(NAME)
-
-#else /* __unix__ */
-#error "Unknown Operating system"
-#endif
-
-#endif /* MISC_OSAPI_H */
+#endif /* _LATENCYMODEL_H */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015, 2016, 2018-2020
+ * Copyright (C) 2015, 2016, 2018-2022
  * Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
@@ -59,7 +59,7 @@
 #define SCHED_HEIGHT ((double) 0.5)
 #define FLOOR_HEIGHT ((double) 0)
 
-#define ABSTRACT_TASK_TIME_ZERO vtl::Time(false, 0, 0, 6)
+#define ABSTRACT_TASK_TIME_ZERO vtl::Time(0, 6)
 
 AbstractTask::AbstractTask() :
 	pid(0), accTime(), accPct(0), cursorTime(), cursorPct(0), isNew(true),
@@ -261,28 +261,33 @@ bool AbstractTask::doStatsTimeLimited()
 
 bool AbstractTask::doScaleRunning()
 {
-	return fillDataVector(runningTimev, scaledRunningData, nullptr,
-			      FLOOR_HEIGHT);
+	fillDataVector(runningTimev, scaledRunningData, nullptr,
+		       FLOOR_HEIGHT);
+	return false; /* No error */
 }
 
 bool AbstractTask::doScalePreempted()
 {
-	return fillDataVector(preemptedTimev, scaledPreemptedData, nullptr,
-			      FLOOR_HEIGHT);
+	fillDataVector(preemptedTimev, scaledPreemptedData, nullptr,
+		       FLOOR_HEIGHT);
+	return false; /* No error */
 }
 
 bool AbstractTask::doScaleUnint()
 {
-	return fillDataVector(uninterruptibleTimev, scaledUninterruptibleData,
-			      nullptr,  FLOOR_HEIGHT);
+	fillDataVector(uninterruptibleTimev, scaledUninterruptibleData,
+		       nullptr,  FLOOR_HEIGHT);
+	return false; /* No error */
 }
 
-bool AbstractTask::doScaleWakeup()
+bool AbstractTask::doScaleDelay()
 {
-	return fillDataVector(wakeDelay, wakeHeight, &wakeZero, WAKEUP_HEIGHT);
+	fillDataVector(delay, delayHeight, &delayZero, DELAY_HEIGHT);
+	fillDataVector(wakeDelay, wakeHeight, &wakeZero, DELAY_HEIGHT);
+	return false; /* No error */
 }
 
-bool  AbstractTask::fillDataVector(QVector<double> &timev,
+void  AbstractTask::fillDataVector(QVector<double> &timev,
 				   QVector<double> &data,
 				   QVector<double> *zerov,
 				   double height)
@@ -292,7 +297,6 @@ bool  AbstractTask::fillDataVector(QVector<double> &timev,
 	data.fill(scaledHeight, s);
 	if (zerov != nullptr)
 		zerov->fill(0, s);
-	return false; /* No error */
 }
 
 void AbstractTask::setCursorTime(enum TShark::CursorIdx cursor,

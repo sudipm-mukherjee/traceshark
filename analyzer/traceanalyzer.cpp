@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2014-2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2014-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -68,11 +68,13 @@ extern "C" {
 
 #include "vtl/compiler.h"
 #include "vtl/error.h"
+#include "vtl/heapsort.h"
 #include "vtl/tlist.h"
 
 #include "analyzer/cpufreq.h"
 #include "analyzer/cpuidle.h"
 #include "parser/genericparams.h"
+#include "analyzer/latencycomp.h"
 #include "analyzer/traceanalyzer.h"
 #include "parser/tracefile.h"
 #include "parser/traceparser.h"
@@ -100,9 +102,9 @@ TraceAnalyzer::TraceAnalyzer(const SettingStore *sstore)
 	: events(nullptr), cpuTaskMaps(nullptr), cpuFreq(nullptr),
 	  cpuIdle(nullptr), black(0, 0, 0), white(255, 255, 255),
 	  migrationOffset(0), migrationScale(0), maxCPU(0), nrCPUs(0),
-	  endTime(false, 0, 0, 6), startTime(false, 0, 0, 6), endTimeDbl(0),
-	  startTimeDbl(0), endTimeIdx(0), maxFreq(0), minFreq(0),
-	  maxIdleState(0), minIdleState(0), timePrecision(0), CPUs(nullptr),
+	  endTime(0, 6), startTime(0, 6), endTimeDbl(0), startTimeDbl(0),
+	  endTimeIdx(0), maxFreq(0), minFreq(0), maxIdleState(0),
+	  minIdleState(0), timePrecision(0), CPUs(nullptr),
 	  customPlot(nullptr), pidFilterInclusive(false),
 	  OR_pidFilterInclusive(false), setstor(sstore)
 {
@@ -188,6 +190,8 @@ void TraceAnalyzer::close(int *ts_errno)
 	colorMap.clear();
 	parser->close(ts_errno);
 	taskNamePool->clear();
+	schedLatencies.clear();
+	wakeLatencies.clear();
 }
 
 void TraceAnalyzer::resetProperties()
@@ -781,7 +785,7 @@ void TraceAnalyzer::addCpuSchedWork(unsigned int cpu,
 			(&task, &CPUTask::doScale);
 		list.append(taskItem);
 		taskItem = new WorkItem<CPUTask>(&task,
-						 &CPUTask::doScaleWakeup);
+						 &CPUTask::doScaleDelay);
 		list.append(taskItem);
 		taskItem = new WorkItem<CPUTask>(&task,
 						 &CPUTask::doScaleRunning);
@@ -885,6 +889,7 @@ void TraceAnalyzer::doStats()
 	}
 
 	statsQueue.start();
+	doLatencyStats();
 	statsQueue.wait();
 
 	s = workList.size();
@@ -912,6 +917,23 @@ void TraceAnalyzer::doLimitedStats()
 	s = workList.size();
 	for (i = 0; i < s; i++)
 		delete workList[i];
+}
+
+void TraceAnalyzer::doLatencyStats()
+{
+	unsigned int place;
+	LatencyCompFunc lcompfunc(Latency::CMP_CREATE_PLACE,
+				  Latency::ORDER_NORMAL, this);
+	const unsigned nrSchedLat = int2uint(schedLatencies.size());
+	const unsigned nrWakeLat = int2uint(wakeLatencies.size());
+
+	vtl::heapsort<vtl::TList, Latency>(schedLatencies, lcompfunc);
+	for (place = 0; place < nrSchedLat; place++)
+		schedLatencies[place].place = place;
+
+	vtl::heapsort<vtl::TList, Latency>(wakeLatencies, lcompfunc);
+	for (place = 0; place < nrWakeLat; place++)
+		wakeLatencies[place].place = place;
 }
 
 void TraceAnalyzer::processFtrace()
@@ -1337,15 +1359,12 @@ bool TraceAnalyzer::exportTraceFile(const char *fileName, int *ts_errno,
 {
 	bool isFtrace = false, isPerf = false;
 	char *wbuf, *wb;
-	int fd, w;
-	int written, written_io, space, nrspaces, write_rval;
+	int fd;
+	int written, written_io, space, write_rval, wrote;
 	int nr_elements;
 	int idx;
-	int i;
 	const TraceEvent *eptr;
 	bool rval = true;
-	const char *ename;
-	char tbuf[40];
 	event_t cpuevent_type = (event_t) 0;
 	bool ok;
 	bool filtered = isFiltered();
@@ -1422,75 +1441,14 @@ bool TraceAnalyzer::exportTraceFile(const char *fileName, int *ts_errno,
 			if (export_type == EXPORT_TYPE_CPU_CYCLES &&
 			    eptr->type != cpuevent_type)
 				continue;
-			eptr->time.sprint(tbuf);
-			w = snprintf(wb, space,
-				     "%s %5u [%03u] %s: ",
-				     eptr->taskName->ptr, eptr->pid,
-				     eptr->cpu, tbuf);
-			if (w > 0) {
-				written += w;
-				space   -= w;
-				wb      += w;
-			}
-			if (eptr->intArg != 0) {
-				w = snprintf(wb, space, "%10u ",
-					     eptr->intArg);
-				if (w > 0) {
-					written += w;
-					space   -= w;
-					wb      += w;
-				}
-			}
 
-			ename = eptr->getEventName()->ptr;
-			nrspaces = TSMAX(1, spaceStrLen - strlen(ename));
-			nrspaces = TSMIN(nrspaces, space);
-			if (nrspaces > 0) {
-				strncpy(wb, spaceStr, nrspaces);
-				written += nrspaces;
-				space   -= nrspaces;
-				wb      += nrspaces;
+			wrote = writePerfEvent(wb, &space, eptr, ts_errno);
+			if (*ts_errno != 0) {
+				rval = false;
+				goto error_close;
 			}
-
-			w = snprintf(wb, space, "%s:", ename);
-			if (w > 0) {
-				written += w;
-				space   -= w;
-				wb      += w;
-			}
-
-			for (i = 0; i < eptr->argc; i++) {
-				w = snprintf(wb, space, " %s",
-					     eptr->argv[i]->ptr);
-				if (w > 0) {
-					written += w;
-					space   -= w;
-					wb      += w;
-				}
-			}
-			w = snprintf(wb, space, "\n");
-			if (w > 0) {
-				written += w;
-				space   -= w;
-				wb      += w;
-			}
-			if (eptr->postEventInfo != nullptr &&
-			    eptr->postEventInfo->len > 0) {
-				size_t cs = TSMIN(space,
-						  eptr->postEventInfo->len);
-				parser->traceFile->readChunk(
-					eptr->postEventInfo, wb, space,
-					ts_errno);
-				if (*ts_errno != 0) {
-					rval = false;
-					goto error_close;
-				}
-				if (cs > 0) {
-					written += cs;
-					space   -= cs;
-					wb      += cs;
-				}
-			}
+			wb      += wrote;
+			written += wrote;
 		}
 
 		if (written > 0) {
@@ -1507,9 +1465,7 @@ bool TraceAnalyzer::exportTraceFile(const char *fileName, int *ts_errno,
 				}
 			} while(written_io < written);
 		}
-		if (idx >= nr_elements)
-			break;
-	} while(true);
+	} while(idx < nr_elements);
 
 	if (!parser->traceFile->isIntact(ts_errno)) {
 		rval = false;
@@ -1539,6 +1495,257 @@ error_munmap:
 		munmap_err();
 
 	return rval;
+}
+
+bool TraceAnalyzer::exportLatencies(exportformat_t format, latencytype_t type,
+				    const char *fileName, int *ts_errno)
+{
+	const char *sep = nullptr;
+	const vtl::TList<Latency> *latencies = nullptr;
+	char *wbuf = nullptr;
+	char *wb = nullptr;
+	int written, written_io, space, write_rval, wrote;
+	int nr_elements;
+	int idx;
+	const Latency *lptr;
+	bool rval = true;
+	int fd;
+
+	switch (format) {
+	case EXPORT_ASCII:
+		sep = " ";
+		break;
+	case EXPORT_CSV:
+		sep = ";";
+		break;
+	default:
+		*ts_errno = - TS_ERROR_INTERNAL;
+		return false;
+	}
+
+	switch (type) {
+	case LATENCY_WAKEUP:
+		latencies = &wakeLatencies;
+		break;
+	case LATENCY_SCHED:
+		latencies = &schedLatencies;
+		break;
+	default:
+		*ts_errno = - TS_ERROR_INTERNAL;
+		return false;
+	}
+
+	nr_elements = latencies->size();
+
+	wbuf = (char*) mmap(nullptr, (size_t) WRITE_BUFFER_SIZE,
+			    PROT_READ|PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
+			    -1, 0);
+	if (wbuf == MAP_FAILED)
+		mmap_err();
+
+	fd =  clib_open(fileName, O_WRONLY | O_CREAT,
+			(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
+
+	if (fd < 0) {
+		rval = false;
+		*ts_errno = errno;
+		goto error_munmap;
+	}
+
+	idx = 0;
+
+	do {
+		written = 0;
+		space = WRITE_BUFFER_SIZE;
+		wb = wbuf;
+
+		while (idx < nr_elements && written < WRITE_BUFFER_LIMIT) {
+			lptr = &(*latencies)[idx];
+			idx++;
+
+			wrote = writeLatency(wb, &space, lptr, nr_elements,
+					     sep, ts_errno);
+			if (*ts_errno != 0) {
+				rval = false;
+				goto error_close;
+			}
+			wb      += wrote;
+			written += wrote;
+		}
+
+		if (written > 0) {
+			written_io = 0;
+			do {
+				write_rval = write(fd, wbuf, written);
+				if (write_rval > 0) {
+					written_io += write_rval;
+				}
+				if (write_rval < 0 && errno != EINTR) {
+					rval = false;
+					*ts_errno = errno;
+					goto error_close;
+				}
+			} while(written_io < written);
+		}
+	} while(idx < nr_elements);
+
+error_close:
+	if (clib_close(fd) != 0) {
+		if (errno != EINTR) {
+			rval = false;
+			*ts_errno = errno;
+		}
+	}
+
+error_munmap:
+	if (munmap(wbuf, WRITE_BUFFER_SIZE) != 0)
+		munmap_err();
+
+	return rval;
+}
+
+int TraceAnalyzer::writePerfEvent(char *wb, int *space, const TraceEvent *eptr,
+			      int *ts_errno)
+{
+	char tbuf[40];
+	int written = 0;
+	int w;
+	const char *ename;
+	int nrspaces;
+	int i;
+
+	*ts_errno = 0;
+
+	eptr->time.sprint(tbuf);
+	w = snprintf(wb, *space, "%s %5u [%03u] %s: ",
+		     eptr->taskName->ptr, eptr->pid, eptr->cpu, tbuf);
+	if (likely(w > 0)) {
+		written += w;
+		*space  -= w;
+		wb      += w;
+	}
+
+	if (eptr->intArg != 0) {
+		w = snprintf(wb, *space, "%10u ", eptr->intArg);
+		if (likely(w > 0)) {
+			written += w;
+			*space  -= w;
+			wb      += w;
+		}
+	}
+
+	ename = eptr->getEventName()->ptr;
+	nrspaces = TSMAX(1, spaceStrLen - strlen(ename));
+	nrspaces = TSMIN(nrspaces, *space);
+	if (likely(nrspaces > 0)) {
+		strncpy(wb, spaceStr, nrspaces);
+		written += nrspaces;
+		*space  -= nrspaces;
+		wb      += nrspaces;
+	}
+
+	w = snprintf(wb, *space, "%s:", ename);
+	if (likely(w > 0)) {
+		written += w;
+		*space  -= w;
+		wb      += w;
+	}
+
+	for (i = 0; i < eptr->argc; i++) {
+		w = snprintf(wb, *space, " %s", eptr->argv[i]->ptr);
+		if (likely(w > 0)) {
+			written += w;
+			*space  -= w;
+			wb      += w;
+		}
+	}
+	w = snprintf(wb, *space, "\n");
+	if (w > 0) {
+		written += w;
+		*space  -= w;
+		wb      += w;
+	}
+
+	if (eptr->postEventInfo != nullptr && eptr->postEventInfo->len > 0) {
+		size_t cs = TSMIN(*space, eptr->postEventInfo->len);
+		parser->traceFile->readChunk(eptr->postEventInfo, wb, *space,
+					     ts_errno);
+		if (*ts_errno != 0)
+			return written;
+
+		if (cs > 0) {
+			written += cs;
+			*space  -= cs;
+			wb      += cs;
+		}
+	}
+
+	/*
+	 * We are supposed to have ample of space to spare in here. If nothing
+	 * is left, then we assume that something is wrong and and that we ran
+	 * out, even if it's theoretically possible that the buffer was exactly
+	 * as long as needed with no byte to spare. In this way we don't need
+	 * to check if there is space left for every snprintf() and strncpy()
+	 * operation above.
+	 */
+	if (unlikely(*space <= 0))
+		*ts_errno = -TS_ERROR_BUF_NOSPACE;
+	return written;
+}
+
+int TraceAnalyzer::writeLatency(char *wb, int *space, const Latency *lptr,
+				int size, const char *sep, int *ts_errno)
+{
+	uint64_t pct = 10000UL;
+	char tbuf[40];
+	char lbuf[40];
+	int written = 0;
+	int w;
+	Task *task;
+	const unsigned int usize = size > 1 ? size - 1 : 1;
+
+	pct *= usize - lptr->place;
+	pct /= usize;
+
+	*ts_errno = 0;
+	lptr->time.sprint(tbuf);
+	lptr->delay.sprint(lbuf);
+
+	task = findTask(lptr->pid);
+	const QString &dname = *task->displayName;
+
+	/*
+	 * The format below is bascially the same as in the LatencyModel class,
+	 * which is used by LatencyWidget to display latencies, see
+	 * LatencyModel::data().
+	 */
+	w = snprintf(wb, *space, "%d%s%s%s%s%s%s%s%d%s%u.%02u\n",
+		     lptr->pid, sep, dname.toLatin1().data(), sep, tbuf,
+		     sep, lbuf, sep, lptr->place, sep, (unsigned) (pct / 100),
+		     (unsigned) (pct % 100));
+	if (likely(w > 0)) {
+		written += w;
+		*space  -= w;
+		wb      += w;
+	} else {
+		if (w < 0)
+			*ts_errno = errno;
+		else
+			*ts_errno = - TS_ERROR_UNSPEC;
+		return written;
+	}
+
+	/*
+	 * We are supposed to have ample of space to spare in here. If nothing
+	 * is left, then we assume that something is wrong and and that we ran
+	 * out, even if it's theoretically possible that the buffer was exactly
+	 * as long as needed with no byte to spare. In this way we don't need
+	 * to check if there is space left for every snprintf() and strncpy()
+	 * operation above.
+	 */
+	if (unlikely(*space <= 0))
+		*ts_errno = - TS_ERROR_BUF_NOSPACE;
+	return written;
 }
 
 TraceFile *TraceAnalyzer::getTraceFile()
