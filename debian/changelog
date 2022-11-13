@@ -1,3 +1,17 @@
+traceshark (0.9.13~beta-1) unstable; urgency=medium
+
+  [ Debian Janitor ]
+  * Set upstream metadata fields: Bug-Database, Bug-Submit, Repository-Browse.
+  * Use canonical URL in Vcs-Git.
+  * Update standards version to 4.6.0, no changes needed.
+
+  [ Sudip Mukherjee ]
+  * New upstream version 0.9.13~beta
+    - Update copyright.
+  * Update Standards-Version to 4.6.1.0
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sun, 13 Nov 2022 00:07:12 +0000
+
 traceshark (0.9.12~beta-2) unstable; urgency=medium
 
   * Upload to unstable.
