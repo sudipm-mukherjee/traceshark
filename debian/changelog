@@ -1,3 +1,10 @@
+traceshark (0.9.13~beta-2) unstable; urgency=medium
+
+  * link against new libQCustomPlot2.1 (Closes: #1024106)
+    - Thanks Filippo for the patch.
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sun, 11 Dec 2022 17:53:49 +0000
+
 traceshark (0.9.13~beta-1) unstable; urgency=medium
 
   [ Debian Janitor ]
