@@ -8,11 +8,9 @@ Signed-off-by: Sudip Mukherjee <sudipm.mukherjee@gmail.com>
  traceshark.pro | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/traceshark.pro b/traceshark.pro
-index 154a3e7..e542157 100644
 --- a/traceshark.pro
 +++ b/traceshark.pro
-@@ -259,7 +259,7 @@
+@@ -307,7 +307,7 @@
  # other application that uses libqcustomplot and you want to save about 1.3 MB
  # of disk space, then this is for you. If libqcustomplot was compiled without
  # OpenGL support, then you probably want to disable OpenGL above as well.
@@ -21,6 +19,29 @@ index 154a3e7..e542157 100644
  
  # If you have uncommented the previous, you can uncomment this to customize
  # the flag for linking with libqcustomplot. It defaults to -lqcustomplot.
--- 
-2.20.1
-
+@@ -315,6 +315,9 @@
+ # libqcustomplot. Currently it is better to use Qt 5.
+ # USE_CUSTOM_QCUSTOMPLOT_FLAG = -lqcustomplot-qt5
+ 
++# FRusconi, use new version of libQCustomPlot2.1
++USE_CUSTOM_QCUSTOMPLOT_FLAG = -lQCustomPlot
++
+ # Uncomment this for debug symbols
+ # USE_DEBUG_FLAG = -g
+ 
+@@ -581,13 +584,13 @@
+ equals(USE_SYSTEM_QCUSTOMPLOT, yes) {
+ 
+ isEmpty(USE_CUSTOM_QCUSTOMPLOT_FLAG) {
+-QCUSTOM_FLAG = -lqcustomplot
++QCUSTOM_FLAG = -lQCustomPlot
+ } else {
+ QCUSTOM_FLAG = $${USE_CUSTOM_QCUSTOMPLOT_FLAG}
+ }
+ 
+ OUR_FLAGS += -DCONFIG_SYSTEM_QCUSTOMPLOT
+-LIBS += -lqcustomplot
++LIBS += -lQCustomPlot
+ }
+ 
+ OUR_NORMAL_CXXFLAGS = -pedantic -Wall -std=c++11
