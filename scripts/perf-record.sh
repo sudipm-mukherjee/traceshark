@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 #
 #  perf-record.sh - a convenience script to launch perf record
-#  Copyright (C) 2018-2019  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+#  Copyright (C) 2018-2019, 2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
 #
 #  This file is dual licensed: you can use it either under the terms of
 #  the GPL, or the BSD license, at your option.
@@ -61,6 +61,7 @@ usage()
     echo "Usage:"
     echo $cmd" [<options>]"
     echo "    -h|--help             Display this help information"
+    echo "    -c|--perf-cmd <cmd>   Use <cmd> instead of \"perf\""
     echo "    -s|--sleep <N>        Sleep N seconds before terminating trace"
     echo "    -m|--memory <N>       Use a buffer of N megatbytes]"
     echo "    -n|--no-callgraph     Do not record callgraphs"
@@ -83,7 +84,7 @@ timeout_stop_msg()
     echo "Timeout reached, stopped recording"
 }
 
-perf_cmd="perf record"
+perf_cmd="perf"
 
 bufsize_opt=""
 timeout_opt=""
@@ -98,6 +99,14 @@ while [ "$1" != "" ]; do
 	-h | --help )
 	    usage
 	    exit 0
+	    ;;
+	-c | --perf-cmd )
+	    if [ $# -lt 2 ];then
+		usage
+		exit 0
+	    fi
+	    perf_cmd="$2"
+	    shift
 	    ;;
 	-s | --sleep )
 	    if [ $# -lt 2 ];then
@@ -165,6 +174,8 @@ while [ "$1" != "" ]; do
     esac
     shift
 done
+
+perf_cmd="$perf_cmd record"
 
 # Check that each of the default events are supported and add them to the perf
 # command

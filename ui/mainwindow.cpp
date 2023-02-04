@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2023  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -1320,7 +1320,7 @@ void MainWindow::createAboutBox()
 	       "</p>"
 		).arg(QLatin1String(TRACESHARK_VERSION_STRING));
 	textAbout = QMessageBox::tr(
-	       "<p>Copyright &copy; 2014-2022 Viktor Rosendahl<p>"
+	       "<p>Copyright &copy; 2014-2023 Viktor Rosendahl<p>"
 	       "<p>This program comes with ABSOLUTELY NO WARRANTY; details below.</p>"
 	       "<p>This is free software, and you are welcome to redistribute it"
 	       " under certain conditions; select \"License\" under the \"Help\""
@@ -2308,6 +2308,19 @@ void MainWindow::addTaskToLegend(int pid)
 {
 	CPUTask *cpuTask = nullptr;
 	unsigned int cpu;
+	int realpid;
+	Task *task = analyzer->findRealTask(pid);
+
+	/*
+	 * I believe that if task == nullptr, then we will probably fail to
+	 * find any per CPU task below but let's anyway try with the original
+	 * pid. The idea behind using findRealTask is that pid may be a ghost
+	 * pid selected by the user in the TaskSelectDialog class.
+	 */
+	if (task == nullptr)
+		realpid = pid;
+	else
+		realpid = task->pid;
 
 	/*
 	 * Let's find a per CPU taskGraph, because they are always created,
@@ -2315,7 +2328,7 @@ void MainWindow::addTaskToLegend(int pid)
 	 * displayed by the user
 	 */
 	for (cpu = 0; cpu < analyzer->getNrCPUs(); cpu++) {
-		cpuTask = analyzer->findCPUTask(pid, cpu);
+		cpuTask = analyzer->findCPUTask(realpid, cpu);
 		if (cpuTask != nullptr)
 			break;
 	}
@@ -2814,16 +2827,18 @@ void MainWindow::addTaskGraph(int pid)
 	if (!isNew || taskRange == nullptr)
 		return;
 
-	Task *task = analyzer->findTask(pid);
-	QColor color = analyzer->getTaskColor(pid);
+	Task *task = analyzer->findRealTask(pid);
 
 	if (task == nullptr) {
 		taskRangeAllocator->putTaskRange(taskRange);
 		return;
 	}
 
+	/* task->pid may be different from pid, if pid is a ghost task */
+	QColor color = analyzer->getTaskColor(task->pid);
+
 	for (cpu = 0; cpu < analyzer->getNrCPUs(); cpu++) {
-		cpuTask = analyzer->findCPUTask(pid, cpu);
+		cpuTask = analyzer->findCPUTask(task->pid, cpu);
 		if (cpuTask != nullptr)
 			break;
 	}
@@ -2951,7 +2966,7 @@ void MainWindow::addUninterruptibleTaskGraph(Task *task)
 
 void MainWindow::removeTaskGraph(int pid)
 {
-	Task *task = analyzer->findTask(pid);
+	Task *task = analyzer->findRealTask(pid);
 	QCPGraph *qcpGraph;
 
 	if (task == nullptr) {
@@ -2989,7 +3004,7 @@ void MainWindow::removeTaskGraph(int pid)
 		task->uninterruptibleGraph = nullptr;
 	}
 
-	taskRangeAllocator->putTaskRange(pid);
+	taskRangeAllocator->putTaskRange(task->pid);
 	bottom = taskRangeAllocator->getBottom();
 
 	QCPRange range = tracePlot->yAxis->range();
@@ -3381,6 +3396,7 @@ void MainWindow::selectTaskByPid(int pid, const unsigned int *preferred_cpu,
 				 preference_t preference)
 {
 	Task *task;
+	int realpid;
 	QCPGraph *qcpGraph;
 	CPUTask *cpuTask;
 	TaskGraph *graph = nullptr;
@@ -3392,22 +3408,30 @@ void MainWindow::selectTaskByPid(int pid, const unsigned int *preferred_cpu,
 	tracePlot->deselectAll();
 
 	/*
-	 * If the task to be selected is pid 0, that is swapper, then remove
-	 * the task from the task toolbar and disable the task actions.
+	 * If the task to be selected is pid 0, that is swapper, or negative,
+	 * that is those negative pids that sometimes appears as the pid of
+	 * sched_switch events, then remove the task from the task toolbar and
+	 * disable the task actions.
 	 */
-	if (pid == 0)
+	if (pid <= 0)
 		goto out;
 
-	if (preference == PR_CPUGRAPH_ONLY)
-		goto do_cpugraph;
-
-	task = analyzer->findTask(pid);
+	task = analyzer->findRealTask(pid);
 
 	/* task is always supposed to be != nullptr, so display warning */
 	if (task == nullptr) {
 		oops_warnx();
 		goto out;
 	}
+
+	/*
+	 * task->pid may be different from pid. Look at what findRealTask() does
+	 * if you are confused.
+	 */
+	realpid = task->pid;
+
+	if (preference == PR_CPUGRAPH_ONLY)
+		goto do_cpugraph;
 
 	if (task->graph == nullptr)
 		goto do_cpugraph;
@@ -3428,7 +3452,7 @@ do_cpugraph:
 		maxTask = nullptr;
 		maxSize = -1;
 		for (cpu = 0; cpu < analyzer->getNrCPUs(); cpu++) {
-			cpuTask = analyzer->findCPUTask(pid, cpu);
+			cpuTask = analyzer->findCPUTask(realpid, cpu);
 			if (cpuTask != nullptr) {
 				if (cpuTask->schedTimev.size() > maxSize) {
 					maxSize = cpuTask->schedTimev.size();
@@ -3438,14 +3462,20 @@ do_cpugraph:
 		}
 		cpuTask = maxTask;
 	} else {
-		cpuTask = analyzer->findCPUTask(pid, *preferred_cpu);
+		cpuTask = analyzer->findCPUTask(realpid, *preferred_cpu);
 	}
-	/* If we can't find what we expected we warn the user */
-	if (cpuTask == nullptr || cpuTask->graph == nullptr) {
-		oops_warnx();
+	/*
+	 * If we can't find what we expected we give up but don't warn the
+	 * user. There is probably yet another case of tasks that has a global
+	 * task but no per CPU task.
+	 */
+	if (cpuTask == nullptr || cpuTask->graph == nullptr)
 		goto out;
-	}
 	qcpGraph = cpuTask->graph->getQCPGraph();
+	/*
+	 * I would still expect all per CPU tasks that exists to have a QCP
+	 * graph, so in this case we warn the user
+	 */
 	if (qcpGraph == nullptr) {
 		oops_warnx();
 		goto out;
@@ -3455,9 +3485,8 @@ do_cpugraph:
 
 	/* Finally update the TaskToolBar to reflect the change in selection */
 	graph = TaskGraph::fromQCPGraph(qcpGraph);
-	if (graph == nullptr) {
+	if (graph == nullptr)
 		oops_warnx();
-	}
 
 out:
 	if (graph != nullptr) {

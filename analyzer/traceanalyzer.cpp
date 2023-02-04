@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2014-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2014-2023  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -51,6 +51,7 @@
  */
 
 #include <climits>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -279,6 +280,13 @@ void TraceAnalyzer::processSchedAddTail()
 		task.generateDisplayName();
 		if (s <= 0)
 			continue;
+		/*
+		 * Ghost processes aren't supposed to have any scheduling
+		 * events. If we have then, then we interpret it to mean that
+		 * it isn't really a ghost procesess.
+		 */
+		if (task.isGhostAlias)
+			task.isGhostAlias = false;
 		lastTime = task.schedTimev[s - 1];
 		if (lastTime >= endTimeDbl
 		    || task.exitStatus == STATUS_FINAL)
@@ -743,6 +751,32 @@ void TraceAnalyzer::setMigrationScale(double scale)
 void TraceAnalyzer::setQCustomPlot(QCustomPlot *plot)
 {
 	customPlot = plot;
+}
+
+Task *TraceAnalyzer::findRealTask(int pid)
+{
+	Task *task = findTask(pid);
+	Task *realtask;
+	QMap<int, int>::const_iterator iter;
+
+	if (task == nullptr)
+		return nullptr;
+
+	if (!task->isGhostAlias)
+		return task;
+
+	if (task->oneToManyError)
+		return nullptr;
+
+	realtask = findTask(task->isGhostAliasForPID);
+
+	if (realtask == nullptr)
+		return nullptr;
+
+	if (realtask->isGhostAlias)
+		return nullptr;
+
+	return realtask;
 }
 
 void TraceAnalyzer::addCpuFreqWork(unsigned int cpu,
@@ -1312,7 +1346,10 @@ bool TraceAnalyzer::filterActive(FilterState::filter_t filter) const
 		OR_filterState.isEnabled(filter);
 }
 
-#define WRITE_BUFFER_SIZE (256 * sysconf(_SC_PAGESIZE))
+#define SC_CANDIDATE (sysconf(_SC_PAGESIZE))
+#define ANALYZER_PAGESIZE (SC_CANDIDATE > 512 ? SC_CANDIDATE : 4096)
+
+#define WRITE_BUFFER_SIZE (256 * ANALYZER_PAGESIZE)
 #define WRITE_BUFFER_LIMIT ((WRITE_BUFFER_SIZE - 64 * 1024))
 
 const char TraceAnalyzer::spaceStr[] = \

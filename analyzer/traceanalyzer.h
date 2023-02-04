@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2015-2022  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2015-2023  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -176,6 +176,7 @@ public:
 	void doLatencyStats();
 	void setQCustomPlot(QCustomPlot *plot);
 	vtl_always_inline Task *findTask(int pid);
+	Task *findRealTask(int pid);
 	void createPidFilter(QMap<int, int> &map,
 			     bool orlogic, bool inclusive);
 	bool updatePidFilter(bool inclusive);
@@ -594,7 +595,6 @@ vtl_always_inline void TraceAnalyzer::processForkEvent(tracetype_t ttype,
 		task->isNew = false;
 		task->lastRunnable_status = RUN_STATUS_INVALID;
 		task->pid = m.pid;
-		task->events = events;
 		task->schedTimev.append(event.time.toDouble());
 		task->schedData.append(FLOOR_BIT);
 		task->schedEventIdx.append(idx);
@@ -620,10 +620,8 @@ vtl_always_inline void TraceAnalyzer::processExitEvent(tracetype_t ttype,
 	migrations.append(m);
 
 	Task *task = &taskMap[m.pid].getTask();
-	if (task->isNew) {
+	if (task->isNew)
 		task->pid = m.pid;
-		task->events = events;
-	}
 	task->exitStatus = STATUS_EXITCALLED;
 }
 
@@ -675,9 +673,34 @@ void TraceAnalyzer::processSwitchEvent(tracetype_t ttype,
 		task = &taskMap[event.pid].getTask();
 		task->checkName(event.taskName->ptr);
 		if (task->isNew) {
+			task->isNew = false;
 			task->pid = event.pid;
-			task->events = events;
 			task->lastRunnable_status = RUN_STATUS_INVALID;
+		}
+		/*
+		 * Usually, the pid of the scheduling event is the same as the
+		 * oldpid that is being scheduled out. However, that doesn't
+		 * need to be the case with some kernels. At least in some
+		 * container scenarios it has been seen that this is not the
+		 * case. In that case the event pid appears to be some kind of
+		 * alias for the oldpid.
+		 */
+		if (event.pid != oldpid && oldpid > 0 && event.pid > 0) {
+			if (task->isGhostAlias) {
+				/*
+				 * If it is already identified as a ghost
+				 * alias, we must check that the pid matches
+				 * this event's oldpid because we expect the
+				 * trace to have a one to one mapping between
+				 * ghosts and real tasks. If the one to many
+				 * scenario happens, we record it.
+				 */
+				if (task->isGhostAliasForPID != oldpid)
+					task->oneToManyError = true;
+			} else {
+				task->isGhostAlias = true;
+				task->isGhostAliasForPID = oldpid;
+			}
 		}
 	}
 
@@ -722,7 +745,6 @@ void TraceAnalyzer::processSwitchEvent(tracetype_t ttype,
 		/* true means task is newly constructed above */
 		task->pid = oldpid;
 		task->isNew = false;
-		task->events = events;
 		name = sched_switch_handle_oldname_strdup(ttype,
 							  event,
 							  taskNamePool,
@@ -769,7 +791,6 @@ void TraceAnalyzer::processSwitchEvent(tracetype_t ttype,
 		/* true means task is newly constructed above */
 		cpuTask->pid = oldpid;
 		cpuTask->isNew = false;
-		cpuTask->events = events;
 
 		/* Apparently this task was on CPU when we started tracing */
 		cpuTask->schedTimev.append(startTimeDbl);
@@ -809,7 +830,6 @@ skip:
 	if (task->isNew) {
 		task->pid = newpid;
 		task->isNew = false;
-		task->events = events;
 		name = sched_switch_handle_newname_strdup(ttype,
 							  event,
 							  taskNamePool,
@@ -885,7 +905,6 @@ skip:
 		/* true means task is newly constructed above */
 		cpuTask->pid = newpid;
 		cpuTask->isNew = false;
-		cpuTask->events = events;
 
 		cpuTask->schedTimev.append(startTimeDbl);
 		cpuTask->schedData.append(FLOOR_BIT);
@@ -942,7 +961,6 @@ void TraceAnalyzer::processWakeupEvent(tracetype_t ttype,
 	if (task->isNew) {
 		task->pid = pid;
 		task->isNew = false;
-		task->events = events;
 		name = sched_wakeup_name_strdup(ttype, event, taskNamePool);
 		if (name != nullptr)
 			task->checkName(name);
@@ -1056,6 +1074,7 @@ vtl_always_inline void TraceAnalyzer::processGeneric(tracetype_t ttype)
 
 	startTime = (*events)[0].time;
 	AbstractTask::setStartTime(startTime);
+	AbstractTask::setEvents(events);
 	startTimeDbl = startTime.toDouble();
 
 	while(true) {
