@@ -1,3 +1,11 @@
+traceshark (0.9.14~beta-1) unstable; urgency=medium
+
+  * New upstream version 0.9.14~beta
+    - Update copyright.
+  * Update Standards-Version to 4.6.2
+
+ -- Sudip Mukherjee <sudipm.mukherjee@gmail.com>  Sat, 04 Feb 2023 23:27:17 +0000
+
 traceshark (0.9.13~beta-2) unstable; urgency=medium
 
   * link against new libQCustomPlot2.1 (Closes: #1024106)
