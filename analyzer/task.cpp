@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2016-2019, 2021  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2016-2019, 2021-2023
+ * Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -63,7 +64,8 @@ Task::Task():
 	lastRunnable(0), lastRunnable_idx(0),
 	lastRunnable_status(RUN_STATUS_INVALID), lastSleepEntry(0),
 	delayGraph(nullptr), preemptedGraph(nullptr), runningGraph(nullptr),
-	uninterruptibleGraph(nullptr)
+	uninterruptibleGraph(nullptr), isGhostAlias(false),
+	isGhostAliasForPID(0), oneToManyError(false)
 {
 	displayName = new QString();
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
 /*
  * Traceshark - a visualizer for visualizing ftrace and perf traces
- * Copyright (C) 2017, 2020  Viktor Rosendahl <viktor.rosendahl@gmail.com>
+ * Copyright (C) 2017, 2020, 2023  Viktor Rosendahl <viktor.rosendahl@gmail.com>
  *
  * This file is dual licensed: you can use it either under the terms of
  * the GPL, or the BSD license, at your option.
@@ -93,7 +93,7 @@ vtl_always_inline void heap_siftdown_(C<T> &container,
 		if (swap == root)
 			return;
 		else {
-			container.swap(root, swap);
+			container.swapItemsAt(root, swap);
 			root = swap;
 		}
 	}
@@ -128,7 +128,7 @@ template<template <typename> class C, typename T, typename TCompFunc>
 
 	end = count - 1;
 	while (end > 0) {
-		container.swap(0, end);
+		container.swapItemsAt(0, end);
 		end--;
 		heap_siftdown_(container, 0, end, compFunc);
 	}
